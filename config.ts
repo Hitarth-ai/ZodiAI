@@ -31,9 +31,9 @@ function getDateAndTime(): string {
 export const DATE_AND_TIME = getDateAndTime();
 
 export const AI_NAME = "ZodiAI";
-export const OWNER_NAME = "A37 - Hitarth & Yatharth";
+export const OWNER_NAME = "Hitarth & Yatharth";
 
-export const WELCOME_MESSAGE = `Hello! I'm ${AI_NAME}, your AI astrology assistant by ${OWNER_NAME}.I’m for reflection & entertainment – not professional advice.`
+export const WELCOME_MESSAGE = `Hello! I'm ${AI_NAME}, your AI astrology assistant by ${OWNER_NAME}. I’m for reflection & entertainment - not professional advice.`
 
 export const CLEAR_CHAT_TEXT = "New";
 
