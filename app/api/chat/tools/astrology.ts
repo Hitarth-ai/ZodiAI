@@ -1,212 +1,223 @@
+// app/api/chat/tools/astrology.ts
+
 import { tool } from "ai";
 import { z } from "zod";
 
-const ASTROLOGY_API_USER_ID = process.env.ASTROLOGY_API_USER_ID;
-const ASTROLOGY_API_KEY = process.env.ASTROLOGY_API_KEY;
-const ASTROLOGY_API_BASE =
-  process.env.ASTROLOGY_API_BASE || "https://json.astrologyapi.com/v1";
+const ASTROLOGY_API_BASE = "https://json.astrologyapi.com/v1";
 
-if (!ASTROLOGY_API_USER_ID || !ASTROLOGY_API_KEY) {
+const ASTROLOGY_USER_ID = process.env.ASTROLOGY_USER_ID;
+const ASTROLOGY_API_KEY = process.env.ASTROLOGY_API_KEY;
+
+// Helpful log in case env vars are missing at build time
+if (!ASTROLOGY_USER_ID || !ASTROLOGY_API_KEY) {
   console.warn(
-    "[AstrologyTool] ASTROLOGY_API_USER_ID or ASTROLOGY_API_KEY is not set. " +
-      "The astrology tool will return an error until you configure them."
+    "[astrologyTool] ASTROLOGY_USER_ID or ASTROLOGY_API_KEY is missing. " +
+      "Set them in .env.local"
   );
 }
 
-function buildAuthHeader() {
-  if (!ASTROLOGY_API_USER_ID || !ASTROLOGY_API_KEY) {
+// Build the Basic Auth header for AstrologyAPI, compatible with Node + Edge
+function buildAuthHeader(): string {
+  if (!ASTROLOGY_USER_ID || !ASTROLOGY_API_KEY) {
     throw new Error(
-      "Astrology API credentials are not configured. " +
-        "Please set ASTROLOGY_API_USER_ID and ASTROLOGY_API_KEY in your environment."
+      "Astrology API credentials are not configured on the server."
     );
   }
 
-  const token = Buffer.from(
-    `${ASTROLOGY_API_USER_ID}:${ASTROLOGY_API_KEY}`
-  ).toString("base64");
+  const authString = `${ASTROLOGY_USER_ID}:${ASTROLOGY_API_KEY}`;
+  let base64: string;
 
-  return `Basic ${token}`;
+  // Node.js (Buffer exists)
+  if (typeof (globalThis as any).Buffer !== "undefined") {
+    base64 = (globalThis as any)
+      .Buffer.from(authString, "utf8")
+      .toString("base64");
+  } else {
+    // Edge / browser-like runtimes
+    base64 = btoa(authString);
+  }
+
+  return `Basic ${base64}`;
 }
 
-// Generic helper to call any AstrologyAPI JSON endpoint (POST)
-async function callAstrologyApi(
-  endpoint: string,
-  payload: Record<string, unknown>
-) {
-  const res = await fetch(`${ASTROLOGY_API_BASE}/${endpoint}`, {
+// ------------------------
+// Types for responses
+// ------------------------
+
+type GeoDetailsResult = {
+  geonames?: {
+    place_name: string;
+    latitude: number | string;
+    longitude: number | string;
+    timezone_id: string;
+    country_code: string;
+  }[];
+};
+
+type TimezoneResult = {
+  timezone: string | number;
+};
+
+// Generic POST helper to AstrologyAPI
+async function astrologyPost<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${ASTROLOGY_API_BASE}/${path}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: buildAuthHeader(),
+      authorization: buildAuthHeader(),
       "Accept-Language": "en",
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`AstrologyAPI error ${res.status}: ${text}`);
+    throw new Error(`AstrologyAPI ${path} error ${res.status}: ${text}`);
   }
 
-  return res.json();
+  return (await res.json()) as T;
 }
 
-// 1) Look up lat / lon / timezone_id from free-text place using geo_details
-async function lookupGeo(place: string) {
-  const data = await callAstrologyApi("geo_details", {
-    place,
-    maxRows: 5,
-  });
+// ------------------------
+// MAIN TOOL DEFINITION
+// ------------------------
 
-  // Response shape:
-  // { geonames: [{ place_name, latitude, longitude, timezone_id, country_code }, ...] }
-  const geonames = (data as any).geonames;
-
-  if (!Array.isArray(geonames) || geonames.length === 0) {
-    throw new Error(
-      `I couldn't find any location for "${place}". ` +
-        `Try a nearby big city like "Mumbai" or "Ahmedabad, India".`
-    );
-  }
-
-  const best = geonames[0];
-
-  return {
-    lat: Number(best.latitude),
-    lon: Number(best.longitude),
-    timezoneId: String(best.timezone_id),
-    countryCode: String(best.country_code),
-    placeName: String(best.place_name),
-  };
-}
-
-// 2) Convert timezone_id (e.g. "Asia/Kolkata") into numeric offset (e.g. 5.5)
-async function lookupTimezoneOffset(timezoneId: string) {
-  const data = await callAstrologyApi("timezone", {
-    country_code: timezoneId, // docs: "time zone id, get from geo_details api"
-    isDst: true,
-  });
-
-  const offset = parseFloat(String((data as any).timezone));
-
-  if (Number.isNaN(offset)) {
-    throw new Error(
-      `Couldn't resolve timezone offset for "${timezoneId}". ` +
-        "Please try again with a different city."
-    );
-  }
-
-  return offset;
-}
-
-// 3) The actual AI tool the model will call
 export const astrologyTool = tool({
-  description:
-    "Look up Vedic astrology information (birth chart or daily nakshatra prediction) " +
-    "using AstrologyAPI based on the user's birth details.",
-
+  description: `
+Use the Indian Astrology API to answer user questions about their horoscope, birth chart and life trends.
+The tool automatically resolves the user's birth place into latitude, longitude and timezone.
+Call this whenever the user gives (or is ready to give) birth date, birth time and place.`,
   inputSchema: z.object({
-    name: z.string().describe("User's name."),
-    day: z.number().int().min(1).max(31).describe("Day of birth (1–31)."),
+    name: z.string().describe("Name of the person."),
+    day: z.number().int().min(1).max(31).describe("Day of birth."),
     month: z.number().int().min(1).max(12).describe("Month of birth (1–12)."),
-    year: z
-      .number()
-      .int()
-      .min(1900)
-      .max(2100)
-      .describe("Year of birth (4-digit)."),
-    hour: z
-      .number()
-      .int()
-      .min(0)
-      .max(23)
-      .describe("Hour of birth in 24-hour format (0–23)."),
-    minute: z
-      .number()
-      .int()
-      .min(0)
-      .max(59)
-      .describe("Minute of birth (0–59)."),
+    year: z.number().int().min(1900).max(2100).describe("Year of birth."),
+    hour: z.number().int().min(0).max(23).describe("Hour of birth (0–23)."),
+    minute: z.number().int().min(0).max(59).describe("Minute of birth (0–59)."),
     place: z
       .string()
       .describe(
-        "Birth place as free text, ideally 'City, State, Country' " +
-          "(e.g. 'Junagadh, Gujarat, India' or 'Mumbai, India')."
+        "Birth place (city or town, e.g. 'Mumbai' or 'Junagadh, India')."
       ),
     queryType: z
-      .enum(["birth_chart", "daily_prediction"])
+      .enum(["birth_chart", "general_report"])
       .describe(
-        "What the user wants: 'birth_chart' for natal details, " +
-          "'daily_prediction' for today's nakshatra-based prediction."
+        "What the user is asking for: 'birth_chart' or a high-level 'general_report'."
       ),
   }),
 
-  async execute(input) {
+  /**
+   * The AI SDK will call this when the model chooses this tool.
+   */
+  execute: async (input) => {
+    const { name, day, month, year, hour, minute, place, queryType } = input;
+
+    // 1) GEO LOOKUP – resolve the place name
+    //    - We strip off anything after a comma so both "Mumbai" and "Mumbai, India" work.
+    const trimmedPlace = place.split(",")[0].trim();
+
+    let geo: GeoDetailsResult;
     try {
-      const { name, day, month, year, hour, minute, place, queryType } = input;
-
-      // A. Resolve place ➜ lat / lon / timezone_id
-      const geo = await lookupGeo(place);
-
-      // B. Get numeric timezone offset (e.g. 5.5)
-      const tzone = await lookupTimezoneOffset(geo.timezoneId);
-
-      // C. Shared birth details payload shape per docs
-      const birthDetails = {
-        day,
-        month,
-        year,
-        hour,
-        min: minute,
-        lat: geo.lat,
-        lon: geo.lon,
-        tzone,
-      };
-
-      if (queryType === "birth_chart") {
-        const rawBirth = await callAstrologyApi("astro_details", birthDetails);
-
-        return {
-          type: "birth_chart",
-          name,
-          location: geo.placeName,
-          timezone: geo.timezoneId,
-          tzone,
-          rawBirth,
-        };
-      }
-
-      if (queryType === "daily_prediction") {
-        const rawPrediction = await callAstrologyApi(
-          "daily_nakshatra_prediction",
-          birthDetails
-        );
-
-        return {
-          type: "daily_prediction",
-          name,
-          location: geo.placeName,
-          timezone: geo.timezoneId,
-          tzone,
-          rawPrediction,
-        };
-      }
-
-      // Should never hit because queryType is an enum
+      geo = await astrologyPost<GeoDetailsResult>("geo_details", {
+        place: trimmedPlace.toLowerCase(),
+        maxRows: 3,
+      });
+    } catch (error) {
+      console.error("[astrologyTool] geo_details error", error);
       return {
-        type: "error",
-        message:
-          "I couldn't understand whether you wanted a birth chart or a daily prediction.",
-      };
-    } catch (err) {
-      console.error("[AstrologyTool] Error:", err);
-      return {
-        type: "error",
-        message:
-          err instanceof Error
-            ? err.message
-            : "Something went wrong while talking to the astrology service. Please try again.",
+        type: "astrology-error",
+        message: `I couldn't reach the astrology location service for "${place}". Please try again in a bit or give me the nearest big city.`,
       };
     }
+
+    const candidate = geo.geonames && geo.geonames[0];
+
+    if (!candidate) {
+      return {
+        type: "astrology-error",
+        message: `The astrology service could not recognise "${place}". Try a nearby major city, like Mumbai, Delhi, London, etc.`,
+      };
+    }
+
+    const latitude = Number(candidate.latitude);
+    const longitude = Number(candidate.longitude);
+    const timezoneId = candidate.timezone_id;
+    const countryCode = candidate.country_code;
+
+    // 2) TIMEZONE LOOKUP – convert timezone_id → numeric offset (tzone)
+    //    Docs use 'country_code' for the field name but description says "time zone id".
+    let tzone = 5.5; // default to IST if anything fails
+    try {
+      const tz = await astrologyPost<TimezoneResult>("timezone", {
+        country_code: timezoneId, // actually timezone_id
+        isDst: false,
+      });
+      const parsed = Number(tz.timezone);
+      if (!Number.isNaN(parsed)) {
+        tzone = parsed;
+      }
+    } catch (error) {
+      console.error("[astrologyTool] timezone error", error);
+      // Keep default 5.5 on failure
+    }
+
+    // 3) BASE BIRTH DETAILS – used by many other endpoints
+    const birthPayload = {
+      day,
+      month,
+      year,
+      hour,
+      min: minute,
+      lat: latitude,
+      lon: longitude,
+      tzone,
+    };
+
+    let birthDetails: unknown;
+    try {
+      birthDetails = await astrologyPost("birth_details", birthPayload);
+    } catch (error) {
+      console.error("[astrologyTool] birth_details error", error);
+      return {
+        type: "astrology-error",
+        message:
+          "There was a technical problem while calculating your chart. Please double-check your birth details and try again.",
+      };
+    }
+
+    // 4) Extra info depending on query type
+    let extra: unknown = null;
+
+    if (queryType === "birth_chart") {
+      try {
+        // North Indian chart layout – chartId = 1
+        extra = await astrologyPost("horo_chart/1", birthPayload);
+      } catch (error) {
+        console.error("[astrologyTool] horo_chart error", error);
+      }
+    } else if (queryType === "general_report") {
+      try {
+        extra = await astrologyPost("general_ascendant_report", birthPayload);
+      } catch (error) {
+        console.error("[astrologyTool] general_ascendant_report error", error);
+      }
+    }
+
+    // 5) Final structured result – the model will turn this into text for the user
+    return {
+      type: "astrology-success",
+      name,
+      resolvedLocation: {
+        requested: place,
+        matchedPlace: candidate.place_name,
+        countryCode,
+        latitude,
+        longitude,
+        timezoneId,
+        tzone,
+      },
+      birthDetails,
+      extra,
+    };
   },
 });
