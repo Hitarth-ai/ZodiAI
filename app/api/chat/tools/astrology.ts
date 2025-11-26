@@ -1,38 +1,35 @@
 // app/api/chat/tools/astrology.ts
 
-import { tool } from "ai";
 import { z } from "zod";
 
 /**
- * Helper: get AstrologyAPI credentials from env
+ * Build Basic Auth header for AstrologyAPI.
  */
-function getAstrologyAuthHeader() {
+function getAstrologyAuthHeader(): string {
   const userId = process.env.ASTROLOGY_USER_ID;
   const apiKey = process.env.ASTROLOGY_API_KEY;
 
   if (!userId || !apiKey) {
     throw new Error(
-      "Astrology API credentials are missing. Set ASTROLOGY_USER_ID and ASTROLOGY_API_KEY in your env."
+      "Astrology API credentials missing. Set ASTROLOGY_USER_ID and ASTROLOGY_API_KEY in env."
     );
   }
 
-  const base64 = Buffer.from(`${userId}:${apiKey}`, "utf-8").toString("base64");
+  const base64 = Buffer.from(`${userId}:${apiKey}`, "utf8").toString("base64");
   return `Basic ${base64}`;
 }
 
 /**
- * Helper: call AstrologyAPI JSON endpoints
+ * Low-level helper to call AstrologyAPI JSON endpoints.
  */
 async function callAstrologyApi(endpoint: string, body: any) {
-  const authHeader = getAstrologyAuthHeader();
-
   const res = await fetch(`https://json.astrologyapi.com/v1/${endpoint}`, {
     method: "POST",
     headers: {
-      authorization: authHeader,
+      authorization: getAstrologyAuthHeader(),
       "Content-Type": "application/json",
-      "Accept-Language": "en",
       Accept: "application/json",
+      "Accept-Language": "en",
     },
     body: JSON.stringify(body),
   });
@@ -40,7 +37,7 @@ async function callAstrologyApi(endpoint: string, body: any) {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(
-      `AstrologyAPI ${endpoint} failed with ${res.status}: ${text || "No body"}`
+      `AstrologyAPI ${endpoint} failed (${res.status}): ${text || "no body"}`
     );
   }
 
@@ -48,67 +45,20 @@ async function callAstrologyApi(endpoint: string, body: any) {
 }
 
 /**
- * Helper: lookup lat/lon using OpenStreetMap Nominatim
- * (we completely bypass AstrologyAPI geo_details now)
+ * Resolve place name -> lat, lon, timezone, tzone using OpenStreetMap.
+ * Falls back to hard-coded Indian cities (Mumbai, Junagadh, etc.) if needed.
  */
 async function geocodePlace(place: string) {
   const query = place.trim();
+  if (!query) throw new Error("Empty place string");
 
-  // Basic sanity check
-  if (!query) {
-    throw new Error("Empty place string");
-  }
-
-  // 1) Try Nominatim (OpenStreetMap)
-  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
-    query
-  )}&format=json&limit=1&addressdetails=1`;
-
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": "ZodiAI-StudentProject/1.0 (contact: your-email@example.com)",
-      Accept: "application/json",
-    },
-  });
-
-  if (res.ok) {
-    const data: any[] = await res.json();
-
-    if (Array.isArray(data) && data.length > 0) {
-      const best = data[0];
-
-      const lat = parseFloat(best.lat);
-      const lon = parseFloat(best.lon);
-
-      // If result is in India → assume IST (+5.5)
-      const countryCode = best.address?.country_code?.toLowerCase();
-      const timezoneId =
-        countryCode === "in" ? "Asia/Kolkata" : "UTC";
-      const tzone = countryCode === "in" ? 5.5 : 0;
-
-      return {
-        lat,
-        lon,
-        timezoneId,
-        tzone,
-        resolvedPlace: best.display_name as string,
-      };
-    }
-  }
-
-  // 2) Fallback: some hard-coded Indian cities
-  const lower = query.toLowerCase();
-
+  // ---------- 1) hard-coded fallbacks first (cheap & reliable) ----------
+  const key = query.toLowerCase();
   const fallbackTable: Record<
     string,
     { lat: number; lon: number; timezoneId: string; tzone: number }
   > = {
-    mumbai: {
-      lat: 19.076,
-      lon: 72.8777,
-      timezoneId: "Asia/Kolkata",
-      tzone: 5.5,
-    },
+    mumbai: { lat: 19.076, lon: 72.8777, timezoneId: "Asia/Kolkata", tzone: 5.5 },
     "mumbai, india": {
       lat: 19.076,
       lon: 72.8777,
@@ -127,12 +77,7 @@ async function geocodePlace(place: string) {
       timezoneId: "Asia/Kolkata",
       tzone: 5.5,
     },
-    delhi: {
-      lat: 28.6139,
-      lon: 77.209,
-      timezoneId: "Asia/Kolkata",
-      tzone: 5.5,
-    },
+    delhi: { lat: 28.6139, lon: 77.209, timezoneId: "Asia/Kolkata", tzone: 5.5 },
     "new delhi": {
       lat: 28.6139,
       lon: 77.209,
@@ -159,8 +104,8 @@ async function geocodePlace(place: string) {
     },
   };
 
-  const fb = fallbackTable[lower];
-  if (fb) {
+  if (fallbackTable[key]) {
+    const fb = fallbackTable[key];
     return {
       lat: fb.lat,
       lon: fb.lon,
@@ -170,93 +115,109 @@ async function geocodePlace(place: string) {
     };
   }
 
-  // If nothing works, throw a clear error – the model will surface this nicely
-  throw new Error(`Could not resolve location for "${query}"`);
+  // ---------- 2) OpenStreetMap Nominatim ----------
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+    query
+  )}&format=json&limit=1&addressdetails=1`;
+
+  const res = await fetch(url, {
+    headers: {
+      "User-Agent": "ZodiAI-StudentProject/1.0 (contact: you@example.com)",
+      Accept: "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Geocoding request failed with status ${res.status}`);
+  }
+
+  const data: any[] = await res.json();
+  if (!Array.isArray(data) || data.length === 0) {
+    throw new Error(`No geocoding results for "${query}"`);
+  }
+
+  const best = data[0];
+  const lat = parseFloat(best.lat);
+  const lon = parseFloat(best.lon);
+  const countryCode: string | undefined = best.address?.country_code;
+  const inIndia = countryCode?.toLowerCase() === "in";
+
+  return {
+    lat,
+    lon,
+    timezoneId: inIndia ? "Asia/Kolkata" : "UTC",
+    tzone: inIndia ? 5.5 : 0,
+    resolvedPlace: best.display_name as string,
+  };
 }
 
 /**
- * ZodiAI Astrology Tool
- * - Takes basic birth details + place
- * - Resolves place → lat/lon/timezone
- * - Calls AstrologyAPI astro_details
+ * Astrology tool object (NO call to tool()).
+ * This is what you import in route.ts and add to the tools map.
  */
-export const astrologyTool = tool({
+export const astrologyTool: any = {
   description:
-    "Look up Vedic astrology information (like birth chart basics) using birth details and place of birth.",
+    "Uses Vedic Astrology to generate a birth chart style reading from birth date, time and place.",
 
   parameters: z.object({
-    name: z
-      .string()
-      .describe("User's first name to personalise the reading."),
-    day: z
-      .number()
-      .int()
-      .min(1)
-      .max(31)
-      .describe("Day of birth, e.g., 6"),
-    month: z
-      .number()
-      .int()
-      .min(1)
-      .max(12)
-      .describe("Month of birth, 1-12"),
+    name: z.string().describe("User's first name."),
+    day: z.number().int().min(1).max(31).describe("Day of birth (1–31)."),
+    month: z.number().int().min(1).max(12).describe("Month of birth (1–12)."),
     year: z
       .number()
       .int()
       .min(1900)
       .max(2100)
-      .describe("Year of birth, e.g., 2000"),
+      .describe("Year of birth, e.g. 2000."),
     hour: z
       .number()
       .int()
       .min(0)
       .max(23)
-      .describe("Hour of birth in 24h format."),
+      .describe("Hour of birth in 24h format (0–23)."),
     minute: z
       .number()
       .int()
       .min(0)
       .max(59)
-      .describe("Minute of birth."),
+      .describe("Minute of birth (0–59)."),
     place: z
       .string()
       .describe(
-        "Place of birth (city + country if possible, e.g., 'Junagadh, India' or 'Mumbai, India')."
+        "Place of birth (e.g. 'Junagadh, India' or 'Mumbai, India'). Short forms like 'Junagadh' also work."
       ),
     queryType: z
       .enum(["birth_chart", "basic_traits"])
       .default("birth_chart")
       .describe(
-        "Type of astrology query. 'birth_chart' for chart + traits, 'basic_traits' for a lighter personality reading."
+        "Use 'birth_chart' for full chart-style reading, 'basic_traits' for lighter personality focus."
       ),
   }),
 
   /**
-   * The AI SDK will call this when the model chooses this tool.
+   * Called by the AI model when it chooses this tool.
    */
-  execute: async (input) => {
+  execute: async (input: any) => {
     const { name, day, month, year, hour, minute, place, queryType } = input;
 
-    // 1) Resolve location → lat/lon/timezone
+    // 1) Resolve location
     let geo;
     try {
       geo = await geocodePlace(place);
     } catch (err: any) {
-      // We return an error object; the model will convert this into a nice explanation for the user.
+      console.error("[astrologyTool] geocode error", err);
       return {
         type: "astrology_error",
-        message: `I couldn't resolve the place of birth "${place}". Technical reason: ${
-          err?.message || "unknown"
-        }. Ask the user to try another nearby city or include country name.`,
+        message: `I couldn't resolve the place of birth "${place}". Ask the user to try again with a nearby big city and country name (e.g. "Junagadh, India" or "Mumbai, India").`,
       };
     }
 
     const { lat, lon, tzone, timezoneId, resolvedPlace } = geo;
 
-    // 2) Call Vedic "astro_details" for basic birth chart traits
-    let astroData: any;
+    // 2) Call Vedic astro_details
+    let astro;
     try {
-      astroData = await callAstrologyApi("astro_details", {
+      astro = await callAstrologyApi("astro_details", {
         day,
         month,
         year,
@@ -267,15 +228,16 @@ export const astrologyTool = tool({
         tzone,
       });
     } catch (err: any) {
+      console.error("[astrologyTool] astro_details error", err);
       return {
         type: "astrology_error",
-        message: `Astrology API failed while generating your chart. Reason: ${
+        message: `Astrology engine failed while generating your chart. Reason: ${
           err?.message || "unknown"
-        }`,
+        }.`,
       };
     }
 
-    // 3) Shape the response for the model
+    // 3) Shape output – the model will turn this into nice text
     if (queryType === "basic_traits") {
       return {
         type: "basic_traits",
@@ -285,11 +247,10 @@ export const astrologyTool = tool({
         tzone,
         lat,
         lon,
-        rawAstroDetails: astroData,
+        rawAstroDetails: astro,
       };
     }
 
-    // Default: full birth_chart-style payload (model will translate into user-friendly text)
     return {
       type: "birth_chart",
       name,
@@ -298,7 +259,7 @@ export const astrologyTool = tool({
       tzone,
       lat,
       lon,
-      rawAstroDetails: astroData,
+      rawAstroDetails: astro,
     };
   },
-});
+};
