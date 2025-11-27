@@ -174,9 +174,7 @@ export default function Chat() {
 
   const welcomeShownRef = useRef<boolean>(false);
 
-  const { messages, sendMessage, status, stop, setMessages } = useChat({
-    messages: [],
-  });
+  const { messages, sendMessage, status, stop, setMessages } = useChat();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
