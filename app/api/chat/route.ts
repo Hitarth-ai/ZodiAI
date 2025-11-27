@@ -7,6 +7,10 @@ import { webSearch } from './tools/web-search';
 import { vectorDatabaseSearch } from './tools/search-vector-database';
 import { astrologyTool } from './tools/astrology';
 
+// Ensure Node.js runtime so Buffer works in astrology tool
+export const runtime = 'nodejs';
+
+
 export const maxDuration = 30;
 export async function POST(req: Request) {
     const { messages }: { messages: UIMessage[] } = await req.json();
