@@ -806,6 +806,7 @@ export default function Chat() {
           messages={messages}
           sendMessage={sendMessage}
           language={language as "en" | "hi" | "gu" | "hinglish"}
+          isStreaming={isStreaming}
         />
 
         
