@@ -490,9 +490,9 @@ export default function Chat() {
                 <p className="text-sm font-semibold text-slate-900">
                   Previous chats
                 </p>
-                <span className="text-[10px] text-slate-500">
+                {/* <span className="text-[10px] text-slate-500">
                   {history.length}/5
-                </span>
+                </span> */}
               </div>
 
               {history.length === 0 ? (
