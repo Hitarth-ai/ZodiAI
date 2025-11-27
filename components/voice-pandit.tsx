@@ -1,17 +1,19 @@
 "use client";
 
+import Image from "next/image";
 import { UIMessage } from "ai";
 import { Mic, MicOff, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+type VoiceLanguage = "en" | "hi" | "gu" | "hinglish";
+
 type TalkingPanditProps = {
   messages: UIMessage[];
   sendMessage: (args: { text: string }) => void;
-  enabled?: boolean; // controlled from page.tsx toggle
-  language?: "en" | "hi" | "gu";
+  enabled?: boolean;
+  language?: VoiceLanguage;
 };
 
-// -------- Helper: extract text from AI message --------
 function extractTextFromMessage(message: UIMessage): string {
   const anyMsg: any = message;
   if (typeof anyMsg.text === "string") return anyMsg.text;
@@ -28,92 +30,55 @@ function extractTextFromMessage(message: UIMessage): string {
   return "";
 }
 
-// -------- Avatar component (expressive Pandit) --------
+function localeFor(language: VoiceLanguage): string {
+  switch (language) {
+    case "hi":
+      return "hi-IN";
+    case "gu":
+      return "gu-IN";
+    case "hinglish":
+    case "en":
+    default:
+      // Indian-accent English works well for Hinglish too
+      return "en-IN";
+  }
+}
 
-type PanditAvatarProps = {
+/** 3D avatar wrapper – uses /public/pandit.png */
+function PanditAvatar({
+  listening,
+  speaking,
+}: {
   listening: boolean;
   speaking: boolean;
-};
-
-function PanditAvatar({ listening, speaking }: PanditAvatarProps) {
-  const [mouthOpen, setMouthOpen] = useState(false);
-
-  // simple mouth animation while speaking
-  useEffect(() => {
-    if (!speaking) {
-      setMouthOpen(false);
-      return;
-    }
-    const id = setInterval(() => {
-      setMouthOpen((m) => !m);
-    }, 160);
-    return () => clearInterval(id);
-  }, [speaking]);
-
-  const halo =
-    listening || speaking ? "ring-2 ring-orange-400 shadow-lg" : "ring-0";
-
-  // eye style changes a bit when listening
-  const eyeHeight = listening ? 6 : 4;
-  const eyeTop = listening ? 14 : 16;
+}) {
+  const active = listening || speaking;
 
   return (
-    <div
-      className={`relative flex h-14 w-14 items-center justify-center rounded-full bg-orange-50 ${halo}`}
-    >
-      {/* Face circle */}
-      <div className="relative h-12 w-12 rounded-full bg-[#ffe0c2] shadow-inner">
-        {/* Turban / headcloth */}
-        <div className="absolute inset-x-0 top-0 h-5 rounded-t-full bg-orange-500" />
-        <div className="absolute left-1/2 top-4 h-3 w-3 -translate-x-1/2 rounded-full bg-white/80" />
-        <div className="absolute left-1/2 top-5 h-1 w-2 -translate-x-1/2 rounded-full bg-red-500" />
-
-        {/* Ears */}
-        <div className="absolute -left-1 top-6 h-4 w-3 rounded-full bg-[#ffd3aa]" />
-        <div className="absolute -right-1 top-6 h-4 w-3 rounded-full bg-[#ffd3aa]" />
-
-        {/* Eyes */}
-        <div className="absolute left-1/2 top-0 flex w-full justify-between px-3">
-          <div
-            style={{ marginTop: eyeTop, height: eyeHeight }}
-            className="w-3 rounded-full bg-[#303030]"
-          />
-          <div
-            style={{ marginTop: eyeTop, height: eyeHeight }}
-            className="w-3 rounded-full bg-[#303030]"
-          />
-        </div>
-
-        {/* Brows */}
-        <div className="absolute left-1/2 top-0 flex w-full justify-between px-3">
-          <div className="mt-10 h-1 w-4 rounded-full bg-[#8b4f2c]" />
-          <div className="mt-10 h-1 w-4 rounded-full bg-[#8b4f2c]" />
-        </div>
-
-        {/* Mustache */}
-        <div className="absolute left-1/2 top-0 flex w-full justify-center">
-          <div className="mt-[34px] h-2 w-10 rounded-full bg-[#5c3924]" />
-        </div>
-
-        {/* Mouth */}
-        <div className="absolute left-1/2 top-0 flex w-full justify-center">
-          <div
-            className="mt-[38px] rounded-full bg-[#8b3a2a] transition-all"
-            style={{
-              width: mouthOpen ? 26 : 18,
-              height: mouthOpen ? 10 : 4,
-            }}
-          />
-        </div>
-
-        {/* Beard / chin */}
-        <div className="absolute inset-x-2 bottom-0 h-4 rounded-b-full bg-[#f7d2aa]/80" />
-      </div>
+    <div className="relative h-14 w-14">
+      {/* soft shadow/halo */}
+      <div
+        className={`absolute inset-0 rounded-full bg-gradient-to-br from-orange-200 to-orange-50 shadow-lg transition ${
+          active ? "scale-105" : "scale-100"
+        }`}
+      />
+      <div
+        className={`absolute inset-1 rounded-full bg-white transition ${
+          active ? "ring-2 ring-orange-400" : "ring-0"
+        }`}
+      />
+      <Image
+        src="/pandit.png"
+        alt="ZodiAI Panditji"
+        fill
+        sizes="56px"
+        className={`relative rounded-full object-cover transition ${
+          speaking ? "animate-pulse" : ""
+        }`}
+      />
     </div>
   );
 }
-
-// -------- Main TalkingPandit widget (voice STT/TTS + avatar) --------
 
 export function TalkingPandit({
   messages,
@@ -127,10 +92,11 @@ export function TalkingPandit({
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [lastSpokenId, setLastSpokenId] = useState<string | null>(null);
+  const [hasIntroduced, setHasIntroduced] = useState(false);
 
   const recognitionRef = useRef<any | null>(null);
 
-  // Init STT on client
+  // --- init on client ---
   useEffect(() => {
     setIsClient(true);
     if (typeof window === "undefined") return;
@@ -144,21 +110,15 @@ export function TalkingPandit({
       return;
     }
 
-    const recognition = new SpeechRecognition() as any;
-    // basic language mapping
-    recognition.lang =
-      language === "hi"
-        ? "hi-IN"
-        : language === "gu"
-        ? "gu-IN"
-        : "en-IN";
-
+    const recognition = new SpeechRecognition();
+    recognition.lang = localeFor(language);
     recognition.continuous = false;
     recognition.interimResults = false;
 
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       if (transcript && transcript.trim()) {
+        // Simple: send exactly what user said into your existing chat
         sendMessage({ text: transcript.trim() });
       }
     };
@@ -198,7 +158,27 @@ export function TalkingPandit({
     setIsListening(false);
   };
 
-  // Speak new assistant messages with TTS
+  // --- intro line: "I'm your AI Pandit, tell me beta" once when enabled ---
+  useEffect(() => {
+    if (!isClient || !enabled || hasIntroduced) return;
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    const synth = window.speechSynthesis;
+    const intro =
+      language === "gu"
+        ? "Kem cho beta? Hu ZodiAI chu, tamaro AI pandit. Shu puchvu chho?"
+        : language === "hi" || language === "hinglish"
+        ? "Namaste beta, main ZodiAI hoon, tumhara AI Pandit. Bolo beta, kya puchna hai?"
+        : "Hello beta, I'm ZodiAI, your AI Pandit. Tell me, beta, what's your question?";
+
+    const utterance = new SpeechSynthesisUtterance(intro);
+    utterance.lang = localeFor(language);
+    synth.cancel();
+    synth.speak(utterance);
+    setHasIntroduced(true);
+  }, [enabled, isClient, language, hasIntroduced]);
+
+  // --- speak new assistant messages ---
   useEffect(() => {
     if (!isClient || !ttsEnabled || !enabled) return;
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
@@ -212,14 +192,7 @@ export function TalkingPandit({
     if (!text.trim()) return;
 
     const utterance = new SpeechSynthesisUtterance(text);
-
-    // TTS language mapping (browsers' support varies)
-    utterance.lang =
-      language === "hi"
-        ? "hi-IN"
-        : language === "gu"
-        ? "gu-IN"
-        : "en-IN";
+    utterance.lang = localeFor(language);
 
     utterance.onstart = () => setIsSpeaking(true);
     utterance.onend = () => setIsSpeaking(false);
@@ -231,54 +204,58 @@ export function TalkingPandit({
 
   if (!isClient || !enabled) return null;
 
+  const subtitle = !hasIntroduced
+    ? "I’m your AI Pandit – tell me, beta."
+    : isListening
+    ? "Listening… speak now."
+    : "Tap mic and ask your question.";
+
   return (
     <div className="fixed bottom-24 right-4 z-40">
-      <div className="rounded-3xl border border-orange-100 bg-white/95 shadow-lg px-3 py-2 flex items-center gap-3">
-        {/* Pandit Avatar with expressions */}
+      <div className="flex items-center gap-3 rounded-3xl border border-orange-100 bg-white/95 px-4 py-3 shadow-xl">
+        {/* 3D avatar */}
         <PanditAvatar listening={isListening} speaking={isSpeaking} />
 
-        {/* Text */}
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs font-semibold text-slate-900">
+        {/* text */}
+        <div className="mr-2 flex flex-col">
+          <span className="text-sm font-semibold text-slate-900">
             Talk to Panditji
           </span>
-          <span className="text-[10px] text-slate-500">
-            {speechSupported
-              ? isListening
-                ? "Listening… speak now."
-                : "Tap mic and ask your question."
-              : "Voice not supported on this browser."}
-          </span>
+          <span className="text-[11px] text-slate-500">{subtitle}</span>
         </div>
 
-        {/* Controls */}
-        <div className="flex items-center gap-1">
-          {/* Mic */}
+        {/* controls */}
+        <div className="flex items-center gap-2">
+          {/* mic */}
           <button
             type="button"
             onClick={isListening ? stopListening : startListening}
             disabled={!speechSupported}
-            className={`flex h-8 w-8 items-center justify-center rounded-full border text-white text-xs ${
+            className={`flex h-9 w-9 items-center justify-center rounded-full text-white shadow-md ${
               isListening
-                ? "border-orange-400 bg-orange-500"
-                : "border-orange-200 bg-orange-400/90 hover:bg-orange-500"
+                ? "bg-orange-500"
+                : "bg-orange-400 hover:bg-orange-500"
             }`}
             title={isListening ? "Stop listening" : "Start listening"}
           >
-            {isListening ? <MicOff className="h-3 w-3" /> : <Mic className="h-3 w-3" />}
+            {isListening ? (
+              <MicOff className="h-4 w-4" />
+            ) : (
+              <Mic className="h-4 w-4" />
+            )}
           </button>
 
-          {/* Speaker toggle */}
+          {/* speaker toggle */}
           <button
             type="button"
             onClick={() => setTtsEnabled((v) => !v)}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 text-xs hover:bg-slate-50"
-            title={ttsEnabled ? "Mute pandit voice" : "Unmute pandit voice"}
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+            title={ttsEnabled ? "Mute Pandit voice" : "Unmute Pandit voice"}
           >
             {ttsEnabled ? (
-              <Volume2 className="h-3 w-3" />
+              <Volume2 className="h-4 w-4" />
             ) : (
-              <VolumeX className="h-3 w-3" />
+              <VolumeX className="h-4 w-4" />
             )}
           </button>
         </div>
