@@ -1,34 +1,93 @@
 import { UIMessage } from "ai";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+
 import { UserMessage } from "./user-message";
 import { AssistantMessage } from "./assistant-message";
 
+// This must match the id on the scrollable div in page.tsx
+const SCROLL_CONTAINER_ID = "chat-scroll-container";
 
-export function MessageWall({ messages, status, durations, onDurationChange }: { messages: UIMessage[]; status?: string; durations?: Record<string, number>; onDurationChange?: (key: string, duration: number) => void }) {
-    const messagesEndRef = useRef<HTMLDivElement>(null);
+type MessageWallProps = {
+  messages: UIMessage[];
+  status?: string;
+  durations?: Record<string, number>;
+  onDurationChange?: (key: string, duration: number) => void;
+};
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+export function MessageWall({
+  messages,
+  status,
+  durations,
+  onDurationChange,
+}: MessageWallProps) {
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Whether the user is currently near the bottom of the chat
+  const [isAtBottom, setIsAtBottom] = useState(true);
+
+  // Track scroll position of the main chat container
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const container = document.getElementById(SCROLL_CONTAINER_ID);
+    if (!container) return;
+
+    const handleScroll = () => {
+      const threshold = 80; // px from bottom counts as "at bottom"
+      const distanceFromBottom =
+        container.scrollHeight - container.scrollTop - container.clientHeight;
+
+      setIsAtBottom(distanceFromBottom < threshold);
     };
 
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
+    // Set initial state
+    handleScroll();
 
-    return (
-        <div className="relative max-w-3xl w-full">
-            <div className="relative flex flex-col gap-4">
-                {messages.map((message, messageIndex) => {
-                    const isLastMessage = messageIndex === messages.length - 1;
-                    return (
-                        <div key={message.id} className="w-full">
-                            {message.role === "user" ? <UserMessage message={message} /> : <AssistantMessage message={message} status={status} isLastMessage={isLastMessage} durations={durations} onDurationChange={onDurationChange} />}
-                        </div>
-                    );
-                })}
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
 
-                <div ref={messagesEndRef} />
+  // Auto-scroll ONLY when user is already at the bottom
+  useEffect(() => {
+    if (!isAtBottom) return;
+    if (typeof window === "undefined") return;
+
+    const container = document.getElementById(SCROLL_CONTAINER_ID);
+    if (!container) return;
+
+    // Scroll to the bottom of the container
+    container.scrollTop = container.scrollHeight;
+
+    // Optional: also ensure the last message is in view
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [messages, isAtBottom]);
+
+  return (
+    <div className="relative max-w-3xl w-full">
+      <div className="relative flex flex-col gap-4">
+        {messages.map((message, messageIndex) => {
+          const isLastMessage = messageIndex === messages.length - 1;
+
+          return (
+            <div key={message.id} className="w-full">
+              {message.role === "user" ? (
+                <UserMessage message={message} />
+              ) : (
+                <AssistantMessage
+                  message={message}
+                  status={status}
+                  isLastMessage={isLastMessage}
+                  durations={durations}
+                  onDurationChange={onDurationChange}
+                />
+              )}
             </div>
-        </div>
-    );
+          );
+        })}
+
+        {/* Anchor for scrolling to the end */}
+        <div ref={messagesEndRef} />
+      </div>
+    </div>
+  );
 }
