@@ -240,7 +240,7 @@ export default function Chat() {
         </div>
 
         {/* Main scrollable area */}
-        <div className="h-screen overflow-y-auto px-5 py-4 w-full pt-[88px] pb-[150px]">
+        <div className="h-screen overflow-y-auto px-5 py-4 w-full pt-[88px] pb-[250px]">
           <div className="flex flex-col items-center justify-end min-h-full">
             {isClient ? (
               <>
