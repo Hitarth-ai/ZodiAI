@@ -145,7 +145,7 @@ function createWelcomeMessage(): UIMessage {
   };
 }
 
-// Helper to flatten message text (used for share)
+// Flatten message text (used for share)
 function getMessageText(message: UIMessage): string {
   const anyMsg: any = message as any;
   if (typeof anyMsg.content === "string") return anyMsg.content;
@@ -293,7 +293,7 @@ export default function Chat() {
     welcomeShownRef.current = conv.messages.length > 0;
   }, [activeId, conversations, isClient, setMessages]);
 
-  // Whenever messages / durations / birthDetails / language change, update active conv
+  // When messages / durations / birthDetails / language change, update active conv
   useEffect(() => {
     if (!isClient || !activeId) return;
     setConversations((prev) =>
@@ -321,7 +321,7 @@ export default function Chat() {
   // Handlers ---------------------------------------------------------
 
   const onSubmit = (data: z.infer<typeof formSchema>) => {
-    sendMessage({ text: data.message, data: { language } });
+    sendMessage({ text: data.message, metadata: { language } });
     form.reset();
   };
 
@@ -347,7 +347,7 @@ export default function Chat() {
 
     const text = `My name is ${name}. My date of birth is ${day}-${month}-${year} at ${safeHour}:${safeMinute} (approx). I was born in ${place}. Please use Vedic astrology to interpret my chart and give me an initial overview, then show me a menu of what ZodiAI can help me with.`;
 
-    sendMessage({ text, data: { language } });
+    sendMessage({ text, metadata: { language } });
   };
 
   const handleDurationChange = (key: string, duration: number) => {
@@ -399,23 +399,23 @@ export default function Chat() {
   // -------------------------------------------------------------------
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 flex">
+    <div className="min-h-screen bg-zinc-50 text-slate-900 flex">
       {/* LEFT SIDEBAR (collapsible) */}
       <aside
-        className={`hidden md:flex flex-col border-r border-slate-800 bg-slate-950 transition-all duration-200 ${
+        className={`hidden md:flex flex-col border-r border-slate-200 bg-white transition-all duration-200 ${
           sidebarOpen ? "w-64" : "w-12"
         }`}
       >
-        <div className="flex items-center justify-between px-3 py-3 border-b border-slate-800">
+        <div className="flex items-center justify-between px-3 py-3 border-b border-slate-200">
           {sidebarOpen && (
             <div className="flex items-center gap-2">
-              <Avatar className="size-7 border border-slate-700 bg-slate-900">
+              <Avatar className="size-7 border border-orange-200 bg-orange-50">
                 <AvatarImage src="/logo.png" />
                 <AvatarFallback>Z</AvatarFallback>
               </Avatar>
               <div className="flex flex-col leading-tight">
                 <span className="text-sm font-semibold">ZodiAI</span>
-                <span className="text-[11px] text-slate-400">
+                <span className="text-[11px] text-slate-500">
                   Saved readings
                 </span>
               </div>
@@ -424,7 +424,7 @@ export default function Chat() {
           <Button
             size="icon"
             variant="outline"
-            className="h-7 w-7 border-slate-700 bg-slate-900 hover:bg-slate-800"
+            className="h-7 w-7 border-slate-300 bg-white hover:bg-slate-100"
             onClick={startNewConversation}
           >
             <Plus className="h-4 w-4" />
@@ -456,8 +456,8 @@ export default function Chat() {
                     onClick={() => setActiveId(conv.id)}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
                       isActive
-                        ? "bg-slate-800 border border-slate-700"
-                        : "hover:bg-slate-900"
+                        ? "bg-orange-50 border border-orange-200"
+                        : "hover:bg-slate-100"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -468,7 +468,7 @@ export default function Chat() {
                         {formatDateShort(conv.updatedAt)}
                       </span>
                     </div>
-                    <div className="text-[11px] text-slate-400 truncate">
+                    <div className="text-[11px] text-slate-500 truncate">
                       {subtitle}
                     </div>
                   </button>
@@ -486,13 +486,13 @@ export default function Chat() {
       {/* RIGHT PANEL */}
       <main className="flex-1 flex flex-col">
         {/* Top bar with toggle, title, language + share + logo */}
-        <header className="border-b border-slate-800 bg-slate-950">
+        <header className="border-b border-slate-200 bg-white">
           <ChatHeader>
             <ChatHeaderBlock className="justify-start">
               <Button
                 size="icon"
                 variant="outline"
-                className="h-8 w-8 border-slate-700 bg-slate-900 hover:bg-slate-800"
+                className="h-8 w-8 border-slate-300 bg-white hover:bg-slate-100"
                 onClick={() => setSidebarOpen((v) => !v)}
               >
                 {sidebarOpen ? (
@@ -508,7 +508,7 @@ export default function Chat() {
                 <p className="tracking-tight text-sm font-semibold">
                   {activeConversation?.title || "ZodiAI chat"}
                 </p>
-                <span className="text-[11px] text-slate-400">
+                <span className="text-[11px] text-slate-500">
                   Feels like talking to a friendly astrologer, not a robot.
                 </span>
               </div>
@@ -521,7 +521,7 @@ export default function Chat() {
                 onChange={(e) =>
                   handleLanguageChange(e.target.value as Lang)
                 }
-                className="bg-slate-900 border border-slate-700 text-[11px] rounded-md px-2 py-1 text-slate-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="bg-white border border-slate-300 text-[11px] rounded-md px-2 py-1 text-slate-800 focus:outline-none focus:ring-1 focus:ring-orange-500"
               >
                 <option value="en">English</option>
                 <option value="hi">हिन्दी</option>
@@ -532,7 +532,7 @@ export default function Chat() {
               <Button
                 size="sm"
                 variant="outline"
-                className="border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs flex items-center gap-1.5"
+                className="border-slate-300 bg-white hover:bg-slate-100 text-xs flex items-center gap-1.5"
                 onClick={handleShareChat}
               >
                 <Share2 className="h-3.5 w-3.5" />
@@ -540,7 +540,7 @@ export default function Chat() {
               </Button>
 
               {/* Logo on top-right */}
-              <Avatar className="size-8 border border-slate-700 bg-slate-900">
+              <Avatar className="size-8 border border-orange-200 bg-orange-50">
                 <AvatarImage src="/logo.png" />
                 <AvatarFallback>Z</AvatarFallback>
               </Avatar>
@@ -555,22 +555,22 @@ export default function Chat() {
             className="w-full max-w-3xl flex-1 overflow-y-auto space-y-4 pb-4"
           >
             {/* Birth details card */}
-            <section className="rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-4 space-y-3">
+            <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 space-y-3 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="space-y-1">
                   <h2 className="text-sm font-semibold flex items-center gap-1.5">
-                    <Sparkles className="h-4 w-4 text-slate-300" />
+                    <Sparkles className="h-4 w-4 text-orange-500" />
                     Enter your birth details
                   </h2>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-slate-600">
                     ZodiAI uses your birth data to call AstrologyAPI and
                     interpret your chart. Approximate time is okay.
                   </p>
                 </div>
 
                 {hasBasicBirthInfo && (
-                  <div className="hidden sm:flex flex-col items-start text-[11px] text-slate-200 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 leading-snug space-y-1">
-                    <span className="uppercase tracking-wide text-[10px] text-slate-500">
+                  <div className="hidden sm:flex flex-col items-start text-[11px] text-slate-800 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 leading-snug space-y-1">
+                    <span className="uppercase tracking-wide text-[10px] text-orange-600">
                       Preview
                     </span>
                     <span className="font-medium">{birthDetails.name}</span>
@@ -595,7 +595,7 @@ export default function Chat() {
               >
                 <div className="sm:col-span-2">
                   <Input
-                    className="bg-slate-950 border-slate-700 text-slate-50"
+                    className="bg-white border-slate-300 text-slate-900"
                     placeholder="Name"
                     value={birthDetails.name}
                     onChange={(e) =>
@@ -609,7 +609,7 @@ export default function Chat() {
 
                 <div className="flex gap-2">
                   <Input
-                    className="bg-slate-950 border-slate-700 text-slate-50"
+                    className="bg-white border-slate-300 text-slate-900"
                     placeholder="DD"
                     value={birthDetails.day}
                     onChange={(e) =>
@@ -617,7 +617,7 @@ export default function Chat() {
                     }
                   />
                   <Input
-                    className="bg-slate-950 border-slate-700 text-slate-50"
+                    className="bg-white border-slate-300 text-slate-900"
                     placeholder="MM"
                     value={birthDetails.month}
                     onChange={(e) =>
@@ -628,7 +628,7 @@ export default function Chat() {
                     }
                   />
                   <Input
-                    className="bg-slate-950 border-slate-700 text-slate-50"
+                    className="bg-white border-slate-300 text-slate-900"
                     placeholder="YYYY"
                     value={birthDetails.year}
                     onChange={(e) =>
@@ -642,7 +642,7 @@ export default function Chat() {
 
                 <div className="flex gap-2">
                   <Input
-                    className="bg-slate-950 border-slate-700 text-slate-50"
+                    className="bg-white border-slate-300 text-slate-900"
                     placeholder="Hour (0–23)"
                     value={birthDetails.hour}
                     onChange={(e) =>
@@ -653,7 +653,7 @@ export default function Chat() {
                     }
                   />
                   <Input
-                    className="bg-slate-950 border-slate-700 text-slate-50"
+                    className="bg-white border-slate-300 text-slate-900"
                     placeholder="Minute"
                     value={birthDetails.minute}
                     onChange={(e) =>
@@ -667,7 +667,7 @@ export default function Chat() {
 
                 <div className="sm:col-span-2">
                   <Input
-                    className="bg-slate-950 border-slate-700 text-slate-50"
+                    className="bg-white border-slate-300 text-slate-900"
                     placeholder="Place of birth (City, Country)"
                     value={birthDetails.place}
                     onChange={(e) =>
@@ -684,7 +684,7 @@ export default function Chat() {
                     type="submit"
                     size="sm"
                     disabled={status === "streaming" || status === "submitted"}
-                    className="bg-indigo-600 hover:bg-indigo-500 text-xs"
+                    className="bg-orange-500 hover:bg-orange-600 text-xs text-white"
                   >
                     <Sparkles className="h-3.5 w-3.5 mr-1.5" />
                     Send details to {AI_NAME}
@@ -724,7 +724,7 @@ export default function Chat() {
           {/* Bottom input bar */}
           <div className="w-full max-w-3xl mt-3">
             {/* Quick asks */}
-            <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
               <span className="mr-1">Quick asks:</span>
               {quickQuestions.map((q) => (
                 <Button
@@ -732,9 +732,9 @@ export default function Chat() {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="h-7 px-2 text-[11px] border-slate-700 bg-slate-900 hover:bg-slate-800"
+                  className="h-7 px-2 text-[11px] border-slate-300 bg-white hover:bg-slate-50"
                   onClick={() =>
-                    sendMessage({ text: q.text, data: { language } })
+                    sendMessage({ text: q.text, metadata: { language } })
                   }
                   disabled={status === "streaming" || status === "submitted"}
                 >
@@ -761,7 +761,7 @@ export default function Chat() {
                         <textarea
                           {...field}
                           id="chat-form-message"
-                          className="w-full min-h-[60px] max-h-40 resize-none pr-14 pl-5 py-3 bg-slate-900 border border-slate-700 rounded-[20px] text-sm leading-relaxed text-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 placeholder:text-slate-500"
+                          className="w-full min-h-[60px] max-h-40 resize-none pr-14 pl-5 py-3 bg-white border border-slate-300 rounded-[20px] text-sm leading-relaxed text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 placeholder:text-slate-400"
                           placeholder="Ask ZodiAI a question…  (Shift+Enter for new line, Enter to send)"
                           disabled={status === "streaming"}
                           aria-invalid={fieldState.invalid}
@@ -776,7 +776,7 @@ export default function Chat() {
 
                         {(status === "ready" || status === "error") && (
                           <Button
-                            className="absolute right-3 top-2.5 rounded-full h-9 w-9 bg-indigo-600 hover:bg-indigo-500"
+                            className="absolute right-3 top-2.5 rounded-full h-9 w-9 bg-orange-500 hover:bg-orange-600 text-white"
                             type="submit"
                             disabled={!field.value.trim()}
                             size="icon"
@@ -786,7 +786,7 @@ export default function Chat() {
                         )}
                         {(status === "streaming" || status === "submitted") && (
                           <Button
-                            className="absolute right-3 top-2.5 rounded-full h-9 w-9 bg-slate-800 hover:bg-slate-700 border border-slate-600"
+                            className="absolute right-3 top-2.5 rounded-full h-9 w-9 bg-slate-200 hover:bg-slate-300 border border-slate-400"
                             size="icon"
                             type="button"
                             onClick={() => {
@@ -806,7 +806,7 @@ export default function Chat() {
         </div>
 
         {/* Footer */}
-        <footer className="border-t border-slate-800 px-4 py-3 text-[11px] text-slate-500 flex flex-col items-center gap-1">
+        <footer className="border-t border-slate-200 px-4 py-3 text-[11px] text-slate-500 flex flex-col items-center gap-1 bg-white/70">
           <div>
             © {new Date().getFullYear()} {OWNER_NAME} ·{" "}
             <Link href="/terms" className="underline">
