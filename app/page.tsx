@@ -796,6 +796,15 @@ export default function Chat() {
           <PlusIcon className="h-0 w-0" />
           <Square className="h-0 w-0" />
         </span>
+       
+        {/* NEW: talking pandit overlay */}
+        <TalkingPandit
+          enabled={voiceMode}
+          messages={messages}
+          sendMessage={sendMessage}
+          language={language as "en" | "hi" | "gu"} // assuming you have this state
+        />
+        
       </main>
     </div>
   );
