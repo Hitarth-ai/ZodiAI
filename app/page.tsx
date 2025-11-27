@@ -20,7 +20,6 @@ import {
   Share2,
 } from "lucide-react";
 import { MessageWall } from "@/components/messages/message-wall";
-import { ChatHeader, ChatHeaderBlock } from "@/app/parts/chat-header";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { UIMessage } from "ai";
 import {
@@ -30,7 +29,6 @@ import {
   FormEvent,
 } from "react";
 import { AI_NAME, OWNER_NAME, WELCOME_MESSAGE } from "@/config";
-import Image from "next/image";
 import Link from "next/link";
 
 const formSchema = z.object({
@@ -97,7 +95,7 @@ const loadConversationsFromStorage = (): StoredRoot => {
       };
     }
 
-    // backwards-compat single-chat shape
+    // backwards-compat: old single-chat shape
     if (Array.isArray(parsed?.messages)) {
       const conv: Conversation = {
         id: "conv-legacy",
@@ -145,7 +143,7 @@ function createWelcomeMessage(): UIMessage {
   };
 }
 
-// Flatten message text (used for share)
+// Flatten message text (for sharing)
 function getMessageText(message: UIMessage): string {
   const anyMsg: any = message as any;
   if (typeof anyMsg.content === "string") return anyMsg.content;
@@ -293,7 +291,7 @@ export default function Chat() {
     welcomeShownRef.current = conv.messages.length > 0;
   }, [activeId, conversations, isClient, setMessages]);
 
-  // When messages / durations / birthDetails / language change, update active conv
+  // When messages / durations / birthDetails / language change → update active conv
   useEffect(() => {
     if (!isClient || !activeId) return;
     setConversations((prev) =>
@@ -485,10 +483,11 @@ export default function Chat() {
 
       {/* RIGHT PANEL */}
       <main className="flex-1 flex flex-col">
-        {/* Top bar with toggle, title, language + share + logo */}
+        {/* Top bar */}
         <header className="border-b border-slate-200 bg-white">
-          <ChatHeader>
-            <ChatHeaderBlock className="justify-start">
+          <div className="flex items-center justify-between px-4 py-3 max-w-5xl mx-auto">
+            {/* Left: sidebar toggle */}
+            <div className="flex items-center gap-2">
               <Button
                 size="icon"
                 variant="outline"
@@ -501,21 +500,20 @@ export default function Chat() {
                   <PanelLeft className="h-4 w-4" />
                 )}
               </Button>
-            </ChatHeaderBlock>
+            </div>
 
-            <ChatHeaderBlock className="justify-center items-center">
-              <div className="flex flex-col leading-tight text-center">
-                <p className="tracking-tight text-sm font-semibold">
-                  {activeConversation?.title || "ZodiAI chat"}
-                </p>
-                <span className="text-[11px] text-slate-500">
-                  Feels like talking to a friendly astrologer, not a robot.
-                </span>
-              </div>
-            </ChatHeaderBlock>
+            {/* Center: title */}
+            <div className="flex flex-col items-center leading-tight text-center">
+              <p className="tracking-tight text-sm font-semibold">
+                {activeConversation?.title || "ZodiAI chat"}
+              </p>
+              <span className="text-[11px] text-slate-500">
+                Feels like talking to a friendly astrologer, not a robot.
+              </span>
+            </div>
 
-            <ChatHeaderBlock className="justify-end items-center gap-3">
-              {/* Language selector */}
+            {/* Right: language + share + logo */}
+            <div className="flex items-center gap-3">
               <select
                 value={language}
                 onChange={(e) =>
@@ -528,7 +526,6 @@ export default function Chat() {
                 <option value="gu">ગુજરાતી</option>
               </select>
 
-              {/* Share button */}
               <Button
                 size="sm"
                 variant="outline"
@@ -539,16 +536,15 @@ export default function Chat() {
                 Share
               </Button>
 
-              {/* Logo on top-right */}
               <Avatar className="size-8 border border-orange-200 bg-orange-50">
                 <AvatarImage src="/logo.png" />
                 <AvatarFallback>Z</AvatarFallback>
               </Avatar>
-            </ChatHeaderBlock>
-          </ChatHeader>
+            </div>
+          </div>
         </header>
 
-        {/* Middle: scrollable chat area with birth card + messages */}
+        {/* Middle: chat area */}
         <div className="flex-1 flex flex-col items-center px-4 py-4">
           <div
             id="chat-scroll-container"
