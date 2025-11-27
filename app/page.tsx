@@ -799,11 +799,12 @@ export default function Chat() {
        
         {/* NEW: talking pandit overlay */}
         <TalkingPandit
-          enabled={voiceMode}
+          enabled={voiceMode}           // voiceMode from your header toggle
           messages={messages}
           sendMessage={sendMessage}
-          language={language as "en" | "hi" | "gu"} // assuming you have this state
+          language={language as "en" | "hi" | "gu" | "hinglish"}
         />
+
         
       </main>
     </div>
