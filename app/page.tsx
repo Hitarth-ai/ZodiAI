@@ -10,7 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useChat } from "@ai-sdk/react";
-import { useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
+
 import {
   ArrowUp,
   Eraser,
@@ -23,7 +24,6 @@ import {
 import { MessageWall } from "@/components/messages/message-wall";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { UIMessage } from "ai";
-import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   AI_NAME,
   CLEAR_CHAT_TEXT,
