@@ -85,22 +85,37 @@ type ChatHistoryItem = {
 
 /* ---------------------- zodiac theme map ---------------------- */
 
-const ZODIAC_THEMES = {
-  Aries: { main: "#9A463E", sidebar: "#7B3832" },
-  Taurus: { main: "#A3A78B", sidebar: "#82866F" },
-  Gemini: { main: "#F2EEE5", sidebar: "#C2BEB7" },
-  Cancer: { main: "#B8CDD2", sidebar: "#93A4A8" },
-  Leo: { main: "#C1A166", sidebar: "#9A8152" },
-  Virgo: { main: "#C28F76", sidebar: "#9B725E" },
-  Libra: { main: "#D1D1D1", sidebar: "#A7A7A7" },
-  Scorpio: { main: "#3E2C35", sidebar: "#32232A" },
-  Sagittarius: { main: "#F9E27D", sidebar: "#C7B564" },
-  Capricorn: { main: "#D5E4DD", sidebar: "#AAB6B1" },
-  Aquarius: { main: "#2E5A73", sidebar: "#25485C" },
-  Pisces: { main: "#D8A7A1", sidebar: "#AD8681" },
-} as const;
+type ZodiacKey =
+  | "Aries"
+  | "Taurus"
+  | "Gemini"
+  | "Cancer"
+  | "Leo"
+  | "Virgo"
+  | "Libra"
+  | "Scorpio"
+  | "Sagittarius"
+  | "Capricorn"
+  | "Aquarius"
+  | "Pisces";
 
-type ZodiacKey = keyof typeof ZODIAC_THEMES;
+const ZODIAC_THEMES: Record<
+  ZodiacKey,
+  { main: string; sidebar: string; text: string }
+> = {
+  Aries: { main: "#9A463E", sidebar: "#7B3832", text: "#2c1815" },
+  Taurus: { main: "#A3A78B", sidebar: "#82866F", text: "#2f3322" },
+  Gemini: { main: "#F2EEE5", sidebar: "#C2BEB7", text: "#111827" },
+  Cancer: { main: "#B8CDD2", sidebar: "#93A4A8", text: "#10212a" },
+  Leo: { main: "#C1A166", sidebar: "#9A8152", text: "#3b2a11" },
+  Virgo: { main: "#C28F76", sidebar: "#9B725E", text: "#3b2216" },
+  Libra: { main: "#D1D1D1", sidebar: "#A7A7A7", text: "#111827" },
+  Scorpio: { main: "#3E2C35", sidebar: "#32232A", text: "#F9FAFB" },
+  Sagittarius: { main: "#F9E27D", sidebar: "#C7B564", text: "#3b2a0b" },
+  Capricorn: { main: "#D5E4DD", sidebar: "#AAB6B1", text: "#102420" },
+  Aquarius: { main: "#2E5A73", sidebar: "#25485C", text: "#E5F3FA" },
+  Pisces: { main: "#D8A7A1", sidebar: "#AD8681", text: "#3b1813" },
+};
 
 /* ---------------------- helpers for current session ---------------------- */
 
@@ -196,7 +211,6 @@ export default function Chat() {
   // Profile & preferences
   const [userName, setUserName] = useState<string>("");
   const [language, setLanguage] = useState<Language>("en");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [birthDetails, setBirthDetails] = useState<BirthDetails>(
     EMPTY_BIRTH_DETAILS
   );
@@ -476,173 +490,171 @@ export default function Chat() {
 
   /* ---------- theme selection ---------- */
 
-  const defaultTheme = { main: "#34495e", sidebar: "#2c3e50" };
+  const defaultTheme = {
+    main: "#d9d9d9",
+    sidebar: "#a6a6a6",
+    text: "#111827",
+  };
+
   const activeTheme = moonSign ? ZODIAC_THEMES[moonSign] : defaultTheme;
 
   /* ============================ render ============================ */
 
   return (
     <div
-      className="min-h-screen text-slate-100"
-      style={{ backgroundColor: activeTheme.main }}
+      className="min-h-screen"
+      style={{ backgroundColor: activeTheme.sidebar }}
     >
-      <main className="mx-auto flex h-screen max-w-6xl flex-col">
-        {/* Top bar */}
-        <header
-          className="flex items-center justify-between border-b px-4 py-3 backdrop-blur-sm"
+      <main className="mx-auto flex h-screen max-w-6xl">
+        {/* Sidebar – full height, same colour as left space */}
+        <aside
+          className="flex h-full w-72 flex-shrink-0 flex-col border-r px-3 py-4 text-xs"
           style={{
             backgroundColor: activeTheme.sidebar,
-            borderColor: activeTheme.sidebar,
+            borderColor: "#ffffff",
+            color: "#f9fafb",
           }}
         >
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setSidebarOpen((prev) => !prev)}
-              className="rounded-full border border-orange-300 bg-orange-100/90 px-3 py-1 text-xs font-medium text-orange-800 hover:bg-orange-200 transition"
-            >
-              {sidebarOpen ? "Hide panel" : "Show panel"}
-            </button>
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold tracking-tight text-slate-50">
-                ZodiAI – Your AI Panditji
-              </span>
-              <span className="text-[11px] text-slate-200">
-                Gentle Vedic insights — not deterministic predictions.
-              </span>
-            </div>
+          <div className="mb-3">
+            <p className="text-sm font-semibold">Previous chats</p>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* Language selector */}
-            <div className="flex items-center gap-2 rounded-full border border-orange-300 bg-orange-100/90 px-3 py-1 text-[11px] text-slate-800">
-              <span className="font-medium text-orange-800">Language</span>
-              <select
-                className="bg-transparent text-[11px] text-slate-900 outline-none"
-                value={language}
-                onChange={(e) => setLanguage(e.target.value as Language)}
-              >
-                <option value="en">English</option>
-                <option value="hi">Hindi</option>
-                <option value="gu">Gujarati</option>
-              </select>
-            </div>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="hidden rounded-full border border-orange-300 bg-[#fefefe] px-3 py-1 text-[11px] font-medium text-slate-800 hover:bg-orange-50 sm:inline-flex"
-              onClick={handleShareChat}
-            >
-              Share chat
-            </Button>
-
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={`hidden rounded-full border px-3 py-1 text-[11px] font-medium sm:inline-flex transition ${
-                voiceMode
-                  ? "border-orange-400 bg-orange-100 text-orange-800"
-                  : "border-slate-300 bg-[#fdfdfd] text-slate-700 hover:bg-orange-50"
-              }`}
-              onClick={() => setVoiceMode((v) => !v)}
-            >
-              {voiceMode ? "🎙 Voice Pandit ON" : "🎙 Voice Pandit OFF"}
-            </Button>
-
-            <Avatar className="size-9 bg-orange-50 ring-1 ring-orange-300">
-              <AvatarImage src="/logo.png" />
-              <AvatarFallback>
-                <Image src="/logo.png" alt="ZodiAI" width={36} height={36} />
-              </AvatarFallback>
-            </Avatar>
-          </div>
-        </header>
-
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left sidebar – previous chats */}
-          {sidebarOpen && (
-            <aside
-              className="hidden h-full w-72 flex-shrink-0 flex-col border-r px-3 py-4 text-xs text-slate-100 sm:flex"
-              style={{ backgroundColor: activeTheme.sidebar, borderColor: activeTheme.sidebar }}
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-50">
-                  Previous chats
-                </p>
-              </div>
-
-              {history.length === 0 ? (
-                <p className="pr-1 text-[11px] text-slate-300">
-                  You don&apos;t have previous chats yet. When you start a{" "}
-                  <span className="font-medium">New chat</span>, the finished
-                  conversation will be saved here.
-                </p>
-              ) : (
-                <div className="space-y-2 overflow-y-auto pr-1">
-                  {history.map((item) => (
-                    <div
-                      key={item.id}
-                      className="rounded-xl border border-orange-200 bg-orange-50/90 px-3 py-2 text-[11px] leading-snug text-slate-800"
-                    >
-                      <div className="mb-1 flex items-start justify-between gap-2">
-                        <div>
-                          <div className="truncate font-medium text-slate-900">
-                            {item.userName || "Anonymous seeker"}
-                          </div>
-                          <div className="text-[10px] text-slate-500">
-                            {new Date(item.createdAt).toLocaleString(
-                              undefined,
-                              {
-                                month: "short",
-                                day: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              }
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteHistoryItem(item.id);
-                          }}
-                          className="rounded-full p-1 text-slate-400 hover:bg-orange-100 hover:text-slate-700"
-                          aria-label="Delete chat"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+          {history.length === 0 ? (
+            <p className="pr-1 text-[11px] opacity-80">
+              You don&apos;t have previous chats yet. When you start a{" "}
+              <span className="font-medium">New chat</span>, the finished
+              conversation will be saved here.
+            </p>
+          ) : (
+            <div className="space-y-2 overflow-y-auto pr-1">
+              {history.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-xl border border-orange-200 bg-orange-50/95 px-3 py-2 text-[11px] leading-snug text-slate-800"
+                >
+                  <div className="mb-1 flex items-start justify-between gap-2">
+                    <div>
+                      <div className="truncate font-medium">
+                        {item.userName || "Anonymous seeker"}
                       </div>
-                      <div className="mb-2 h-[2.6em] overflow-hidden text-ellipsis text-[11px] text-slate-700">
-                        {getFirstUserLine(item.messages) ||
-                          "No question text available."}
+                      <div className="text-[10px] text-slate-500">
+                        {new Date(item.createdAt).toLocaleString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => openHistoryChat(item)}
-                        className="w-full rounded-full bg-white/90 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-white"
-                      >
-                        Open chat
-                      </button>
                     </div>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteHistoryItem(item.id);
+                      }}
+                      className="rounded-full p-1 text-slate-400 hover:bg-orange-100 hover:text-slate-700"
+                      aria-label="Delete chat"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <div className="mb-2 h-[2.6em] overflow-hidden text-ellipsis text-[11px] text-slate-700">
+                    {getFirstUserLine(item.messages) ||
+                      "No question text available."}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openHistoryChat(item)}
+                    className="w-full rounded-full bg-white/90 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-white"
+                  >
+                    Open chat
+                  </button>
                 </div>
-              )}
-
-              <p className="mt-3 text-[10px] text-slate-300">
-                Chats are stored only in this browser (localStorage).
-              </p>
-            </aside>
+              ))}
+            </div>
           )}
 
-          {/* Main chat area */}
-          <section
-            className="flex flex-1 flex-col"
-            style={{ backgroundColor: activeTheme.main }}
+          <p className="mt-3 text-[10px] opacity-80">
+            Chats are stored only in this browser (localStorage).
+          </p>
+        </aside>
+
+        {/* Right side – header + chat + input/footer */}
+        <section
+          className="flex flex-1 flex-col"
+          style={{ backgroundColor: activeTheme.main, color: activeTheme.text }}
+        >
+          {/* Top bar – same colour as main, white bottom line */}
+          <header
+            className="flex items-center justify-between border-b px-4 py-3"
+            style={{
+              backgroundColor: activeTheme.main,
+              borderColor: "#ffffff",
+            }}
           >
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold tracking-tight">
+                  ZodiAI – Your AI Panditji
+                </span>
+                <span className="text-[11px] opacity-80">
+                  Gentle Vedic insights — not deterministic predictions.
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* Language selector */}
+              <div className="flex items-center gap-2 rounded-full border border-orange-300 bg-orange-100/90 px-3 py-1 text-[11px] text-slate-800">
+                <span className="font-medium text-orange-800">Language</span>
+                <select
+                  className="bg-transparent text-[11px] text-slate-900 outline-none"
+                  value={language}
+                  onChange={(e) =>
+                    setLanguage(e.target.value as Language)
+                  }
+                >
+                  <option value="en">English</option>
+                  <option value="hi">Hindi</option>
+                  <option value="gu">Gujarati</option>
+                </select>
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="hidden rounded-full border border-orange-300 bg-[#fefefe] px-3 py-1 text-[11px] font-medium text-slate-800 hover:bg-orange-50 sm:inline-flex"
+                onClick={handleShareChat}
+              >
+                Share chat
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={`hidden rounded-full border px-3 py-1 text-[11px] font-medium sm:inline-flex transition ${
+                  voiceMode
+                    ? "border-orange-400 bg-orange-100 text-orange-800"
+                    : "border-slate-300 bg-[#fdfdfd] text-slate-700 hover:bg-orange-50"
+                }`}
+                onClick={() => setVoiceMode((v) => !v)}
+              >
+                {voiceMode ? "🎙 Voice Pandit ON" : "🎙 Voice Pandit OFF"}
+              </Button>
+
+              <Avatar className="size-9 bg-orange-50 ring-1 ring-orange-300">
+                <AvatarImage src="/logo.png" />
+                <AvatarFallback>
+                  <Image src="/logo.png" alt="ZodiAI" width={36} height={36} />
+                </AvatarFallback>
+              </Avatar>
+            </div>
+          </header>
+
+          {/* Chat + input */}
+          <div className="flex flex-1 flex-col">
             <div className="flex flex-1 justify-center overflow-y-auto px-4 pt-4 pb-3">
               <div className="w-full max-w-3xl space-y-4">
                 {/* Step 1 – Birth details card */}
@@ -774,10 +786,13 @@ export default function Chat() {
               </div>
             </div>
 
-            {/* Input area */}
+            {/* Input area – same colour as main, white top line */}
             <div
               className="border-t px-4 py-3"
-              style={{ backgroundColor: activeTheme.sidebar, borderColor: activeTheme.sidebar }}
+              style={{
+                backgroundColor: activeTheme.main,
+                borderColor: "#ffffff",
+              }}
             >
               <div className="mx-auto flex max-w-3xl flex-col gap-2">
                 <form
@@ -839,7 +854,7 @@ export default function Chat() {
                   </FieldGroup>
                 </form>
 
-                <div className="flex items-center justify-between text-[11px] text-slate-100">
+                <div className="flex items-center justify-between text-[11px] opacity-90">
                   <button
                     type="button"
                     onClick={clearChat}
@@ -860,8 +875,11 @@ export default function Chat() {
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="w-full px-4 pb-3 pt-1 text-center text-[11px] text-slate-200">
+            {/* Footer – same colour as main */}
+            <div
+              className="w-full px-4 pb-3 pt-1 text-center text-[11px] opacity-80"
+              style={{ backgroundColor: activeTheme.main }}
+            >
               © {new Date().getFullYear()} {OWNER_NAME}
               &nbsp;·&nbsp;ZodiAI.&nbsp;Powered by&nbsp;
               <Link
@@ -871,8 +889,8 @@ export default function Chat() {
                 ringel.ai
               </Link>
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
 
         {/* Tiny hidden icons so imports aren't "unused" if TS is strict */}
         <span className="hidden">
