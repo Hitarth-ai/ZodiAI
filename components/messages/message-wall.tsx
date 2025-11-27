@@ -1,6 +1,7 @@
+"use client";
+
 import { UIMessage } from "ai";
 import { useEffect, useRef, useState } from "react";
-
 import { UserMessage } from "./user-message";
 import { AssistantMessage } from "./assistant-message";
 
@@ -58,8 +59,11 @@ export function MessageWall({
     // Scroll to the bottom of the container
     container.scrollTop = container.scrollHeight;
 
-    // Optional: also ensure the last message is in view
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    // Also keep an anchor at the end
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "end",
+    });
   }, [messages, isAtBottom]);
 
   return (
@@ -67,7 +71,6 @@ export function MessageWall({
       <div className="relative flex flex-col gap-4">
         {messages.map((message, messageIndex) => {
           const isLastMessage = messageIndex === messages.length - 1;
-
           return (
             <div key={message.id} className="w-full">
               {message.role === "user" ? (
