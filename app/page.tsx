@@ -191,6 +191,9 @@ export default function Chat() {
     messages: initialMessages,
   });
 
+  const isStreaming =
+  status === "submitted" || status === "streaming";
+
   // Initial client-only setup
   useEffect(() => {
     setIsClient(true);
