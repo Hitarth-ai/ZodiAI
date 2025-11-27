@@ -9,170 +9,195 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useChat } from "@ai-sdk/react";
-import {
-  ArrowUp,
-  Loader2,
-  Plus,
-  Square,
-  Sparkles,
-  PanelLeft,
-  PanelLeftClose,
-  Share2,
-} from "lucide-react";
+import { ArrowUp, Eraser, Loader2, Plus, PlusIcon, Square } from "lucide-react";
 import { MessageWall } from "@/components/messages/message-wall";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { UIMessage } from "ai";
-import {
-  useEffect,
-  useState,
-  useRef,
-  FormEvent,
-} from "react";
-import { AI_NAME, OWNER_NAME, WELCOME_MESSAGE } from "@/config";
+import { useEffect, useState, useRef } from "react";
+import { AI_NAME, CLEAR_CHAT_TEXT, OWNER_NAME, WELCOME_MESSAGE } from "@/config";
+import Image from "next/image";
 import Link from "next/link";
 
 const formSchema = z.object({
   message: z
     .string()
     .min(1, "Message cannot be empty.")
-    .max(4000, "Message must be at most 4000 characters."),
+    .max(2000, "Message must be at most 2000 characters."),
 });
 
-type Lang = "en" | "hi" | "gu";
+type Language = "en" | "hi" | "gu";
 
-const STORAGE_KEY = "zodiai-conversations-v1";
+const USER_NAME_KEY = "zodiai_user_name";
+const LANGUAGE_KEY = "zodiai_language";
+const STORAGE_KEY = "chat-messages";
 
-type BirthDetails = {
-  name: string;
-  day: string;
-  month: string;
-  year: string;
-  hour: string;
-  minute: string;
-  place: string;
-};
-
-type Conversation = {
-  id: string;
-  title: string;
+type StorageData = {
   messages: UIMessage[];
   durations: Record<string, number>;
-  birthDetails?: BirthDetails;
-  language: Lang;
-  createdAt: number;
-  updatedAt: number;
 };
 
-type StoredRoot = {
-  conversations: Conversation[];
-  activeId: string | null;
-};
-
-const EMPTY_BIRTH_DETAILS: BirthDetails = {
-  name: "",
-  day: "",
-  month: "",
-  year: "",
-  hour: "",
-  minute: "",
-  place: "",
-};
-
-const loadConversationsFromStorage = (): StoredRoot => {
-  if (typeof window === "undefined") return { conversations: [], activeId: null };
+const loadMessagesFromStorage = (): {
+  messages: UIMessage[];
+  durations: Record<string, number>;
+} => {
+  if (typeof window === "undefined") {
+    return { messages: [], durations: {} };
+  }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { conversations: [], activeId: null };
-    const parsed: any = JSON.parse(raw);
-
-    if (Array.isArray(parsed?.conversations)) {
-      return {
-        conversations: parsed.conversations.map((c: any) => ({
-          ...c,
-          language: (c.language as Lang) || "en",
-        })),
-        activeId: parsed.activeId || null,
-      };
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) {
+      return { messages: [], durations: {} };
+    }
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== "object") {
+      return { messages: [], durations: {} };
     }
 
-    // backwards-compat: old single-chat shape
-    if (Array.isArray(parsed?.messages)) {
-      const conv: Conversation = {
-        id: "conv-legacy",
-        title: "Previous chat",
-        messages: parsed.messages,
-        durations: parsed.durations || {},
-        birthDetails: EMPTY_BIRTH_DETAILS,
-        language: "en",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      return { conversations: [conv], activeId: conv.id };
-    }
+    const anyParsed = parsed as any;
+    const messages: UIMessage[] = Array.isArray(anyParsed.messages)
+      ? anyParsed.messages
+      : [];
+    const durations: Record<string, number> =
+      anyParsed.durations && typeof anyParsed.durations === "object"
+        ? anyParsed.durations
+        : {};
 
-    return { conversations: [], activeId: null };
-  } catch (e) {
-    console.error("Failed to load conversations:", e);
-    return { conversations: [], activeId: null };
+    return { messages, durations };
+  } catch (error) {
+    console.error("Failed to load messages from localStorage:", error);
+    return { messages: [], durations: {} };
   }
 };
 
-const saveConversationsToStorage = (
-  conversations: Conversation[],
-  activeId: string | null
+const saveMessagesToStorage = (
+  messages: UIMessage[],
+  durations: Record<string, number>
 ) => {
   if (typeof window === "undefined") return;
   try {
-    const data: StoredRoot = { conversations, activeId };
+    const data: StorageData = { messages, durations };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  } catch (e) {
-    console.error("Failed to save conversations:", e);
+  } catch (error) {
+    console.error("Failed to save messages to localStorage:", error);
   }
 };
 
-function createWelcomeMessage(): UIMessage {
-  return {
-    id: `welcome-${Date.now()}`,
-    role: "assistant",
-    parts: [
-      {
-        type: "text",
-        text: WELCOME_MESSAGE,
-      },
-    ],
-  };
-}
-
-// Flatten message text (for sharing)
-function getMessageText(message: UIMessage): string {
-  const anyMsg: any = message as any;
-  if (typeof anyMsg.content === "string") return anyMsg.content;
-  if (Array.isArray(anyMsg.parts)) {
-    return anyMsg.parts
-      .filter(
-        (p: any) => p?.type === "text" && typeof p.text === "string"
-      )
-      .map((p: any) => p.text)
-      .join("");
+const getMessageText = (message: UIMessage): string => {
+  const anyMessage: any = message;
+  if (typeof anyMessage.text === "string") return anyMessage.text;
+  if (typeof anyMessage.content === "string") return anyMessage.content;
+  if (Array.isArray(anyMessage.parts)) {
+    return anyMessage.parts
+      .map((part: any) => {
+        if (typeof part === "string") return part;
+        if (typeof part.text === "string") return part.text;
+        return "";
+      })
+      .join(" ");
   }
   return "";
-}
+};
 
 export default function Chat() {
   const [isClient, setIsClient] = useState(false);
-
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
-
   const [durations, setDurations] = useState<Record<string, number>>({});
-  const [birthDetails, setBirthDetails] =
-    useState<BirthDetails>(EMPTY_BIRTH_DETAILS);
-  const [language, setLanguage] = useState<Lang>("en");
+  const welcomeMessageShownRef = useRef<boolean>(false);
+
+  // Profile & preferences
+  const [userName, setUserName] = useState<string>("");
+  const [language, setLanguage] = useState<Language>("en");
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
-  const welcomeShownRef = useRef<boolean>(false);
+  // Load stored messages on first render (SSR-safe)
+  const stored =
+    typeof window !== "undefined"
+      ? loadMessagesFromStorage()
+      : { messages: [], durations: {} };
 
-  const { messages, sendMessage, status, stop, setMessages } = useChat();
+  const [initialMessages] = useState<UIMessage[]>(stored.messages);
+
+  const { messages, sendMessage, status, stop, setMessages } = useChat({
+    messages: initialMessages,
+  });
+
+  // Initial client-only setup
+  useEffect(() => {
+    setIsClient(true);
+    setDurations(stored.durations);
+    setMessages(stored.messages);
+
+    // Load profile preferences
+    if (typeof window !== "undefined") {
+      try {
+        const savedName = localStorage.getItem(USER_NAME_KEY);
+        const savedLang = localStorage.getItem(LANGUAGE_KEY) as Language | null;
+        if (savedName) setUserName(savedName);
+        if (savedLang === "en" || savedLang === "hi" || savedLang === "gu") {
+          setLanguage(savedLang);
+        }
+      } catch (error) {
+        console.error("Failed to load user profile:", error);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist messages
+  useEffect(() => {
+    if (!isClient) return;
+    saveMessagesToStorage(messages, durations);
+  }, [durations, messages, isClient]);
+
+  // Persist profile
+  useEffect(() => {
+    if (!isClient) return;
+    try {
+      localStorage.setItem(USER_NAME_KEY, userName);
+    } catch (error) {
+      console.error("Failed to save user name:", error);
+    }
+  }, [userName, isClient]);
+
+  useEffect(() => {
+    if (!isClient) return;
+    try {
+      localStorage.setItem(LANGUAGE_KEY, language);
+    } catch (error) {
+      console.error("Failed to save language:", error);
+    }
+  }, [language, isClient]);
+
+  const handleDurationChange = (key: string, duration: number) => {
+    setDurations((prev) => ({ ...prev, [key]: duration }));
+  };
+
+  // Initial welcome message
+  useEffect(() => {
+    if (
+      isClient &&
+      initialMessages.length === 0 &&
+      !welcomeMessageShownRef.current
+    ) {
+      const text = userName
+        ? `Hi ${userName}, ${WELCOME_MESSAGE}`
+        : WELCOME_MESSAGE;
+
+      const welcomeMessage: UIMessage = {
+        id: `welcome-${Date.now()}`,
+        role: "assistant",
+        parts: [
+          {
+            type: "text",
+            text,
+          },
+        ] as any,
+      };
+
+      setMessages([welcomeMessage]);
+      saveMessagesToStorage([welcomeMessage], {});
+      welcomeMessageShownRef.current = true;
+    }
+  }, [isClient, initialMessages.length, setMessages, userName]);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -181,644 +206,319 @@ export default function Chat() {
     },
   });
 
-  const quickQuestions = [
-    {
-      label: "Personality & strengths",
-      text: "Give me a detailed personality and core strengths overview based on my chart.",
-    },
-    {
-      label: "Career themes",
-      text: "What career and learning themes do you see in my chart?",
-    },
-    {
-      label: "Relationships",
-      text: "What patterns or tendencies do you see in relationships?",
-    },
-    {
-      label: "This week’s focus",
-      text: "What should I focus on this week based on my chart and current energies?",
-    },
-  ];
-
-  const hasBasicBirthInfo =
-    birthDetails.name &&
-    birthDetails.day &&
-    birthDetails.month &&
-    birthDetails.year &&
-    birthDetails.place;
-
-  const formatDateShort = (ts: number) => {
-    const d = new Date(ts);
-    return d.toLocaleDateString(undefined, {
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const startNewConversation = () => {
-    const id = `conv-${Date.now()}`;
-    const welcome = createWelcomeMessage();
-    const conv: Conversation = {
-      id,
-      title: "New chart",
-      messages: [welcome],
-      durations: {},
-      birthDetails: { ...EMPTY_BIRTH_DETAILS },
-      language,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    setConversations((prev) => [conv, ...prev]);
-    setActiveId(id);
-    setMessages(conv.messages);
-    setDurations(conv.durations);
-    setBirthDetails(conv.birthDetails!);
-    welcomeShownRef.current = true;
-  };
-
-  const updateActiveConversation = (
-    updater: (conv: Conversation) => Conversation
-  ) => {
-    if (!activeId) return;
-    setConversations((prev) =>
-      prev.map((c) => (c.id === activeId ? updater(c) : c))
-    );
-  };
-
-  // Initial load
-  useEffect(() => {
-    setIsClient(true);
-    const stored = loadConversationsFromStorage();
-
-    if (stored.conversations.length === 0) {
-      const id = `conv-${Date.now()}`;
-      const welcome = createWelcomeMessage();
-      const firstConv: Conversation = {
-        id,
-        title: "New chart",
-        messages: [welcome],
-        durations: {},
-        birthDetails: { ...EMPTY_BIRTH_DETAILS },
-        language: "en",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      setConversations([firstConv]);
-      setActiveId(id);
-      setMessages(firstConv.messages);
-      setDurations(firstConv.durations);
-      setBirthDetails(firstConv.birthDetails!);
-      setLanguage("en");
-      welcomeShownRef.current = true;
-    } else {
-      setConversations(stored.conversations);
-      const chosenId =
-        stored.activeId || stored.conversations[0]?.id || null;
-      setActiveId(chosenId);
-    }
-  }, [setMessages]);
-
-  // When active conversation changes → load its state
-  useEffect(() => {
-    if (!isClient || !activeId) return;
-    const conv = conversations.find((c) => c.id === activeId);
-    if (!conv) return;
-
-    setMessages(conv.messages || []);
-    setDurations(conv.durations || {});
-    setBirthDetails(conv.birthDetails || { ...EMPTY_BIRTH_DETAILS });
-    setLanguage(conv.language || "en");
-    welcomeShownRef.current = conv.messages.length > 0;
-  }, [activeId, conversations, isClient, setMessages]);
-
-  // When messages / durations / birthDetails / language change → update active conv
-  useEffect(() => {
-    if (!isClient || !activeId) return;
-    setConversations((prev) =>
-      prev.map((c) =>
-        c.id === activeId
-          ? {
-              ...c,
-              messages,
-              durations,
-              birthDetails,
-              language,
-              updatedAt: Date.now(),
-            }
-          : c
-      )
-    );
-  }, [messages, durations, birthDetails, language, activeId, isClient]);
-
-  // Persist to localStorage
-  useEffect(() => {
-    if (!isClient) return;
-    saveConversationsToStorage(conversations, activeId);
-  }, [conversations, activeId, isClient]);
-
-  // Handlers ---------------------------------------------------------
-
   const onSubmit = (data: z.infer<typeof formSchema>) => {
-    sendMessage({ text: data.message, metadata: { language } });
+    const langPrefix =
+      language === "hi"
+        ? "[Language: Hindi] "
+        : language === "gu"
+        ? "[Language: Gujarati] "
+        : "[Language: English] ";
+
+    const namePrefix = userName ? `User name: ${userName}. ` : "";
+
+    const fullText = `${langPrefix}${namePrefix}${data.message}`;
+
+    sendMessage({ text: fullText });
     form.reset();
   };
 
-  const handleBirthSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const { name, day, month, year, hour, minute, place } = birthDetails;
-
-    if (!name || !day || !month || !year || !place) {
-      toast.error("Please fill at least name, date of birth, and place.");
-      return;
-    }
-
-    const safeHour = hour || "12";
-    const safeMinute = minute || "00";
-
-    // Update conversation title & details
-    updateActiveConversation((conv) => ({
-      ...conv,
-      title: name || conv.title,
-      birthDetails: { ...birthDetails },
-      language,
-    }));
-
-    const text = `My name is ${name}. My date of birth is ${day}-${month}-${year} at ${safeHour}:${safeMinute} (approx). I was born in ${place}. Please use Vedic astrology to interpret my chart and give me an initial overview, then show me a menu of what ZodiAI can help me with.`;
-
-    sendMessage({ text, metadata: { language } });
-  };
-
-  const handleDurationChange = (key: string, duration: number) => {
-    setDurations((prev) => ({ ...prev, [key]: duration }));
-  };
-
-  const handleLanguageChange = (lang: Lang) => {
-    setLanguage(lang);
-    updateActiveConversation((conv) => ({ ...conv, language: lang }));
+  const clearChat = () => {
+    const newMessages: UIMessage[] = [];
+    const newDurations: Record<string, number> = {};
+    setMessages(newMessages);
+    setDurations(newDurations);
+    saveMessagesToStorage(newMessages, newDurations);
+    toast.success("Chat cleared");
   };
 
   const handleShareChat = async () => {
-    if (!messages.length) {
-      toast.error("Nothing to share yet.");
+    if (
+      typeof window === "undefined" ||
+      typeof navigator === "undefined" ||
+      !navigator.clipboard
+    ) {
+      toast.error("Sharing only works in the browser.");
       return;
     }
 
-    const text = messages
-      .map((m) => {
-        const roleLabel = m.role === "user" ? "You" : "ZodiAI";
-        return `${roleLabel}: ${getMessageText(m)}`;
-      })
-      .join("\n\n");
-
     try {
-      if (typeof window !== "undefined" && (navigator as any).share) {
-        await (navigator as any).share({
-          title: "ZodiAI reading",
-          text,
-        });
-      } else if (
-        typeof window !== "undefined" &&
-        navigator.clipboard &&
-        navigator.clipboard.writeText
-      ) {
-        await navigator.clipboard.writeText(text);
-        toast.success("Chat copied to clipboard.");
-      } else {
-        toast.error("Sharing is not supported in this browser.");
-      }
-    } catch (err) {
-      console.error("Share failed:", err);
-      toast.error("Could not share chat.");
+      const plain = messages
+        .map((message) => {
+          const who = message.role === "user" ? "You" : AI_NAME;
+          const text = getMessageText(message);
+          return `${who}: ${text}`;
+        })
+        .join("\n");
+
+      await navigator.clipboard.writeText(plain);
+      toast.success("Chat copied to clipboard");
+    } catch (error) {
+      console.error("Failed to copy chat:", error);
+      toast.error("Could not copy chat");
     }
   };
 
-  const activeConversation = conversations.find((c) => c.id === activeId);
+  const sidebarSummary = userName
+    ? `Stored locally for ${userName}. Only you can see this chat on this browser.`
+    : "Add your name to personalise your reading. Your chats stay only in this browser.";
 
-  // -------------------------------------------------------------------
+  const formState = form.formState;
 
   return (
-    <div className="min-h-screen bg-zinc-50 text-slate-900 flex">
-      {/* LEFT SIDEBAR (collapsible) */}
-      <aside
-        className={`hidden md:flex flex-col border-r border-slate-200 bg-white transition-all duration-200 ${
-          sidebarOpen ? "w-64" : "w-12"
-        }`}
-      >
-        <div className="flex items-center justify-between px-3 py-3 border-b border-slate-200">
-          {sidebarOpen && (
-            <div className="flex items-center gap-2">
-              <Avatar className="size-7 border border-orange-200 bg-orange-50">
-                <AvatarImage src="/logo.png" />
-                <AvatarFallback>Z</AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col leading-tight">
-                <span className="text-sm font-semibold">ZodiAI</span>
-                <span className="text-[11px] text-slate-500">
-                  Saved readings
-                </span>
-              </div>
-            </div>
-          )}
-          <Button
-            size="icon"
-            variant="outline"
-            className="h-7 w-7 border-slate-300 bg-white hover:bg-slate-100"
-            onClick={startNewConversation}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1 text-sm">
-          {sidebarOpen ? (
-            conversations.length === 0 ? (
-              <div className="text-xs text-slate-500 px-2 py-2">
-                No chats yet. Start a new chart reading.
-              </div>
-            ) : (
-              conversations.map((conv) => {
-                const isActive = conv.id === activeId;
-                const bd = conv.birthDetails;
-                const subtitle = bd
-                  ? `${bd.name || "Unnamed"} · ${
-                      bd.day && bd.month && bd.year
-                        ? `${bd.day}-${bd.month}-${bd.year}`
-                        : "DOB not set"
-                    }`
-                  : "Birth details not set";
-
-                return (
-                  <button
-                    key={conv.id}
-                    type="button"
-                    onClick={() => setActiveId(conv.id)}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      isActive
-                        ? "bg-orange-50 border border-orange-200"
-                        : "hover:bg-slate-100"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium truncate">
-                        {conv.title || "New chart"}
-                      </span>
-                      <span className="text-[10px] text-slate-500">
-                        {formatDateShort(conv.updatedAt)}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-500 truncate">
-                      {subtitle}
-                    </div>
-                  </button>
-                );
-              })
-            )
-          ) : (
-            <div className="flex flex-col items-center mt-6 gap-1 text-[10px] text-slate-500">
-              <span className="rotate-90">Chats</span>
-            </div>
-          )}
-        </div>
-      </aside>
-
-      {/* RIGHT PANEL */}
-      <main className="flex-1 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-b from-amber-50 via-orange-50/10 to-white text-slate-900">
+      <main className="mx-auto flex h-screen max-w-6xl flex-col">
         {/* Top bar */}
-        <header className="border-b border-slate-200 bg-white">
-          <div className="flex items-center justify-between px-4 py-3 max-w-5xl mx-auto">
-            {/* Left: sidebar toggle */}
-            <div className="flex items-center gap-2">
-              <Button
-                size="icon"
-                variant="outline"
-                className="h-8 w-8 border-slate-300 bg-white hover:bg-slate-100"
-                onClick={() => setSidebarOpen((v) => !v)}
-              >
-                {sidebarOpen ? (
-                  <PanelLeftClose className="h-4 w-4" />
-                ) : (
-                  <PanelLeft className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-
-            {/* Center: title */}
-            <div className="flex flex-col items-center leading-tight text-center">
-              <p className="tracking-tight text-sm font-semibold">
-                {activeConversation?.title || "ZodiAI chat"}
-              </p>
+        <header className="flex items-center justify-between border-b border-orange-100 bg-white/70 px-4 py-3 backdrop-blur-sm">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen((prev) => !prev)}
+              className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs font-medium text-orange-700 hover:bg-orange-100 transition"
+            >
+              {sidebarOpen ? "Hide panel" : "Show panel"}
+            </button>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold tracking-tight text-slate-900">
+                ZodiAI · {AI_NAME}
+              </span>
               <span className="text-[11px] text-slate-500">
-                Feels like talking to a friendly astrologer, not a robot.
+                Gentle Vedic insights — not deterministic predictions.
               </span>
             </div>
+          </div>
 
-            {/* Right: language + share + logo */}
-            <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3">
+            {/* Language selector (desktop) */}
+            <div className="hidden items-center gap-2 rounded-full border border-orange-200 bg-orange-50/80 px-3 py-1 text-[11px] text-slate-700 sm:flex">
+              <span className="font-medium text-orange-700">Language</span>
               <select
+                className="bg-transparent text-[11px] text-slate-800 outline-none"
                 value={language}
-                onChange={(e) =>
-                  handleLanguageChange(e.target.value as Lang)
-                }
-                className="bg-white border border-slate-300 text-[11px] rounded-md px-2 py-1 text-slate-800 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                onChange={(e) => setLanguage(e.target.value as Language)}
               >
                 <option value="en">English</option>
-                <option value="hi">हिन्दी</option>
-                <option value="gu">ગુજરાતી</option>
+                <option value="hi">Hindi</option>
+                <option value="gu">Gujarati</option>
               </select>
-
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-slate-300 bg-white hover:bg-slate-100 text-xs flex items-center gap-1.5"
-                onClick={handleShareChat}
-              >
-                <Share2 className="h-3.5 w-3.5" />
-                Share
-              </Button>
-
-              <Avatar className="size-8 border border-orange-200 bg-orange-50">
-                <AvatarImage src="/logo.png" />
-                <AvatarFallback>Z</AvatarFallback>
-              </Avatar>
             </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="hidden rounded-full border-orange-200 bg-white/90 px-3 py-1 text-[11px] font-medium text-slate-700 hover:bg-orange-50 sm:inline-flex"
+              onClick={handleShareChat}
+            >
+              Share chat
+            </Button>
+
+            <Avatar className="size-9 bg-orange-50 ring-1 ring-orange-200">
+              <AvatarImage src="/logo.png" />
+              <AvatarFallback>
+                <Image src="/logo.png" alt="ZodiAI" width={36} height={36} />
+              </AvatarFallback>
+            </Avatar>
           </div>
         </header>
 
-        {/* Middle: chat area */}
-        <div className="flex-1 flex flex-col items-center px-4 py-4">
-          <div
-            id="chat-scroll-container"
-            className="w-full max-w-3xl flex-1 overflow-y-auto space-y-4 pb-4"
-          >
-            {/* Birth details card */}
-            <section className="rounded-2xl border border-slate-200 bg-white px-4 py-4 space-y-3 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <h2 className="text-sm font-semibold flex items-center gap-1.5">
-                    <Sparkles className="h-4 w-4 text-orange-500" />
-                    Enter your birth details
-                  </h2>
-                  <p className="text-[11px] text-slate-600">
-                    ZodiAI uses your birth data to call AstrologyAPI and
-                    interpret your chart. Approximate time is okay.
-                  </p>
-                </div>
-
-                {hasBasicBirthInfo && (
-                  <div className="hidden sm:flex flex-col items-start text-[11px] text-slate-800 bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 leading-snug space-y-1">
-                    <span className="uppercase tracking-wide text-[10px] text-orange-600">
-                      Preview
-                    </span>
-                    <span className="font-medium">{birthDetails.name}</span>
-                    <span>
-                      {birthDetails.day}-{birthDetails.month}-
-                      {birthDetails.year}
-                      {birthDetails.hour &&
-                        ` · ${birthDetails.hour}:${
-                          birthDetails.minute || "00"
-                        }`}
-                    </span>
-                    <span className="truncate max-w-[180px]">
-                      {birthDetails.place}
-                    </span>
-                  </div>
-                )}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left sidebar */}
+          {sidebarOpen && (
+            <aside className="hidden h-full w-64 flex-shrink-0 flex-col border-r border-orange-100 bg-white/80 px-3 py-4 text-xs text-slate-700 sm:flex">
+              <div className="mb-4 flex items-center justify-between">
+                <p className="text-sm font-semibold text-slate-900">
+                  Your session
+                </p>
               </div>
 
-              <form
-                onSubmit={handleBirthSubmit}
-                className="grid gap-2 sm:grid-cols-2 mt-1"
-              >
-                <div className="sm:col-span-2">
-                  <Input
-                    className="bg-white border-slate-300 text-slate-900"
-                    placeholder="Name"
-                    value={birthDetails.name}
-                    onChange={(e) =>
-                      setBirthDetails((bd) => ({
-                        ...bd,
-                        name: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <Input
-                    className="bg-white border-slate-300 text-slate-900"
-                    placeholder="DD"
-                    value={birthDetails.day}
-                    onChange={(e) =>
-                      setBirthDetails((bd) => ({ ...bd, day: e.target.value }))
-                    }
-                  />
-                  <Input
-                    className="bg-white border-slate-300 text-slate-900"
-                    placeholder="MM"
-                    value={birthDetails.month}
-                    onChange={(e) =>
-                      setBirthDetails((bd) => ({
-                        ...bd,
-                        month: e.target.value,
-                      }))
-                    }
-                  />
-                  <Input
-                    className="bg-white border-slate-300 text-slate-900"
-                    placeholder="YYYY"
-                    value={birthDetails.year}
-                    onChange={(e) =>
-                      setBirthDetails((bd) => ({
-                        ...bd,
-                        year: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-
-                <div className="flex gap-2">
-                  <Input
-                    className="bg-white border-slate-300 text-slate-900"
-                    placeholder="Hour (0–23)"
-                    value={birthDetails.hour}
-                    onChange={(e) =>
-                      setBirthDetails((bd) => ({
-                        ...bd,
-                        hour: e.target.value,
-                      }))
-                    }
-                  />
-                  <Input
-                    className="bg-white border-slate-300 text-slate-900"
-                    placeholder="Minute"
-                    value={birthDetails.minute}
-                    onChange={(e) =>
-                      setBirthDetails((bd) => ({
-                        ...bd,
-                        minute: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <Input
-                    className="bg-white border-slate-300 text-slate-900"
-                    placeholder="Place of birth (City, Country)"
-                    value={birthDetails.place}
-                    onChange={(e) =>
-                      setBirthDetails((bd) => ({
-                        ...bd,
-                        place: e.target.value,
-                      }))
-                    }
-                  />
-                </div>
-
-                <div className="sm:col-span-2 flex justify-end">
-                  <Button
-                    type="submit"
-                    size="sm"
-                    disabled={status === "streaming" || status === "submitted"}
-                    className="bg-orange-500 hover:bg-orange-600 text-xs text-white"
+              <FieldGroup className="space-y-3">
+                <Field>
+                  <FieldLabel
+                    htmlFor="user-name"
+                    className="text-[11px] text-slate-600"
                   >
-                    <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-                    Send details to {AI_NAME}
-                  </Button>
-                </div>
-              </form>
+                    Name
+                  </FieldLabel>
+                  <Input
+                    id="user-name"
+                    placeholder="Type your name"
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                    className="h-8 rounded-xl border-orange-100 bg-white/90 px-3 text-xs"
+                  />
+                </Field>
 
-              <p className="text-[11px] text-slate-500">
-                This information stays in this browser session and is used only
-                to personalize responses. Please don&apos;t enter passwords or
-                ID numbers.
-              </p>
-            </section>
+                <Field>
+                  <FieldLabel className="text-[11px] text-slate-600">
+                    Language
+                  </FieldLabel>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setLanguage("en")}
+                      className={`flex-1 rounded-full px-2 py-1 text-[11px] ${
+                        language === "en"
+                          ? "bg-orange-500 text-white"
+                          : "bg-orange-50 text-slate-700"
+                      }`}
+                    >
+                      English
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLanguage("hi")}
+                      className={`flex-1 rounded-full px-2 py-1 text-[11px] ${
+                        language === "hi"
+                          ? "bg-orange-500 text-white"
+                          : "bg-orange-50 text-slate-700"
+                      }`}
+                    >
+                      हिंदी
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLanguage("gu")}
+                      className={`flex-1 rounded-full px-2 py-1 text-[11px] ${
+                        language === "gu"
+                          ? "bg-orange-500 text-white"
+                          : "bg-orange-50 text-slate-700"
+                      }`}
+                    >
+                      ગુજરાતી
+                    </button>
+                  </div>
+                </Field>
+              </FieldGroup>
 
-            {/* Messages */}
-            {isClient ? (
-              <>
+              <div className="mt-5 rounded-xl border border-orange-100 bg-orange-50/70 p-3 text-[11px] leading-relaxed">
+                <p className="font-medium text-orange-800">How ZodiAI helps</p>
+                <ul className="mt-1 list-disc space-y-1 pl-4">
+                  <li>Birth-chart based life themes</li>
+                  <li>Upcoming planetary periods</li>
+                  <li>Context for daily decisions</li>
+                </ul>
+              </div>
+
+              <p className="mt-3 text-[10px] text-slate-500">{sidebarSummary}</p>
+            </aside>
+          )}
+
+          {/* Main chat area */}
+          <section className="flex flex-1 flex-col">
+            <div className="flex-1 overflow-y-auto px-4 pt-4 pb-3 flex justify-center">
+              <div className="w-full max-w-3xl">
                 <MessageWall
                   messages={messages}
                   status={status}
                   durations={durations}
                   onDurationChange={handleDurationChange}
                 />
-                {status === "submitted" && (
-                  <div className="flex justify-start max-w-3xl w-full mt-2">
-                    <Loader2 className="size-4 animate-spin text-slate-400" />
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="flex justify-center max-w-2xl w-full mt-6">
-                <Loader2 className="size-4 animate-spin text-slate-400" />
               </div>
-            )}
-          </div>
-
-          {/* Bottom input bar */}
-          <div className="w-full max-w-3xl mt-3">
-            {/* Quick asks */}
-            <div className="mb-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-              <span className="mr-1">Quick asks:</span>
-              {quickQuestions.map((q) => (
-                <Button
-                  key={q.label}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-[11px] border-slate-300 bg-white hover:bg-slate-50"
-                  onClick={() =>
-                    sendMessage({ text: q.text, metadata: { language } })
-                  }
-                  disabled={status === "streaming" || status === "submitted"}
-                >
-                  {q.label}
-                </Button>
-              ))}
             </div>
 
-            {/* Chat input (multiline) */}
-            <form id="chat-form" onSubmit={form.handleSubmit(onSubmit)}>
-              <FieldGroup>
-                <Controller
-                  name="message"
-                  control={form.control}
-                  render={({ field, fieldState }) => (
-                    <Field data-invalid={fieldState.invalid}>
-                      <FieldLabel
-                        htmlFor="chat-form-message"
-                        className="sr-only"
-                      >
-                        Message
-                      </FieldLabel>
-                      <div className="relative">
-                        <textarea
-                          {...field}
-                          id="chat-form-message"
-                          className="w-full min-h-[60px] max-h-40 resize-none pr-14 pl-5 py-3 bg-white border border-slate-300 rounded-[20px] text-sm leading-relaxed text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 placeholder:text-slate-400"
-                          placeholder="Ask ZodiAI a question…  (Shift+Enter for new line, Enter to send)"
-                          disabled={status === "streaming"}
-                          aria-invalid={fieldState.invalid}
-                          autoComplete="off"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              form.handleSubmit(onSubmit)();
-                            }
-                          }}
-                        />
+            {/* Input area */}
+            <div className="border-t border-orange-100 bg-white/90 px-4 py-3">
+              <div className="mx-auto flex max-w-3xl flex-col gap-2">
+                <form
+                  id="chat-form"
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="space-y-2"
+                >
+                  <FieldGroup>
+                    <Controller
+                      name="message"
+                      control={form.control}
+                      render={({ field, fieldState }) => (
+                        <Field data-invalid={fieldState.invalid}>
+                          <FieldLabel
+                            htmlFor="chat-form-message"
+                            className="sr-only"
+                          >
+                            Message
+                          </FieldLabel>
+                          <div className="relative">
+                            <textarea
+                              {...field}
+                              id="chat-form-message"
+                              className="w-full min-h-[72px] max-h-40 resize-none rounded-2xl border border-orange-100 bg-white/90 px-4 py-3 pr-12 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
+                              placeholder="Share your birth details and question. Press Shift+Enter for a new line."
+                              disabled={status === "streaming"}
+                              aria-invalid={fieldState.invalid}
+                              autoComplete="off"
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  form.handleSubmit(onSubmit)();
+                                }
+                              }}
+                            />
+                            <Button
+                              type="submit"
+                              size="icon"
+                              className="absolute bottom-2 right-2 h-8 w-8 rounded-full bg-orange-500 text-white hover:bg-orange-600"
+                              disabled={
+                                status === "streaming" || formState.isSubmitting
+                              }
+                            >
+                              {status === "streaming" ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <ArrowUp className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </div>
+                          {fieldState.error && (
+                            <p className="mt-1 text-xs text-red-500">
+                              {fieldState.error.message}
+                            </p>
+                          )}
+                        </Field>
+                      )}
+                    />
+                  </FieldGroup>
+                </form>
 
-                        {(status === "ready" || status === "error") && (
-                          <Button
-                            className="absolute right-3 top-2.5 rounded-full h-9 w-9 bg-orange-500 hover:bg-orange-600 text-white"
-                            type="submit"
-                            disabled={!field.value.trim()}
-                            size="icon"
-                          >
-                            <ArrowUp className="size-4" />
-                          </Button>
-                        )}
-                        {(status === "streaming" || status === "submitted") && (
-                          <Button
-                            className="absolute right-3 top-2.5 rounded-full h-9 w-9 bg-slate-200 hover:bg-slate-300 border border-slate-400"
-                            size="icon"
-                            type="button"
-                            onClick={() => {
-                              stop();
-                            }}
-                          >
-                            <Square className="size-4" />
-                          </Button>
-                        )}
-                      </div>
-                    </Field>
+                <div className="flex items-center justify-between text-[11px] text-slate-500">
+                  <button
+                    type="button"
+                    onClick={clearChat}
+                    className="inline-flex items-center gap-1 rounded-full border border-orange-100 bg-white/70 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-orange-50"
+                  >
+                    <Eraser className="h-3 w-3" />
+                    {CLEAR_CHAT_TEXT}
+                  </button>
+                  {status === "streaming" ? (
+                    <div className="flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin text-orange-500" />
+                      <span>Calculating your chart…</span>
+                    </div>
+                  ) : (
+                    <span>Press Enter to send · Shift+Enter for new line</span>
                   )}
-                />
-              </FieldGroup>
-            </form>
-          </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="w-full px-4 pb-3 pt-1 text-center text-[11px] text-slate-500">
+              © {new Date().getFullYear()} {OWNER_NAME}
+              &nbsp;·&nbsp;ZodiAI.&nbsp;Powered by&nbsp;
+              <Link
+                href="https://ringel.ai/"
+                className="underline-offset-2 hover:underline"
+              >
+                ringel.ai
+              </Link>
+            </div>
+          </section>
         </div>
 
-        {/* Footer */}
-        <footer className="border-t border-slate-200 px-4 py-3 text-[11px] text-slate-500 flex flex-col items-center gap-1 bg-white/70">
-          <div>
-            © {new Date().getFullYear()} {OWNER_NAME} ·{" "}
-            <Link href="/terms" className="underline">
-              Terms of Use
-            </Link>{" "}
-            · Powered by{" "}
-            <Link href="https://ringel.ai/" className="underline">
-              Ringel.AI
-            </Link>
-          </div>
-          <div>
-            Astrology offers guidance, not fixed destiny. Use ZodiAI for
-            reflection, and consult professionals for medical, legal or
-            financial decisions.
-          </div>
-        </footer>
+        {/* Tiny hidden icons so imports aren't "unused" if your TS config is strict */}
+        <span className="hidden">
+          <Plus className="h-0 w-0" />
+          <PlusIcon className="h-0 w-0" />
+          <Square className="h-0 w-0" />
+        </span>
       </main>
     </div>
   );
