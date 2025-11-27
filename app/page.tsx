@@ -34,6 +34,8 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 
+/* ---------------------- schema & types ---------------------- */
+
 const formSchema = z.object({
   message: z
     .string()
@@ -47,6 +49,7 @@ const USER_NAME_KEY = "zodiai_user_name";
 const LANGUAGE_KEY = "zodiai_language";
 const STORAGE_KEY = "chat-messages";
 const HISTORY_KEY = "zodiai-chat-history-v1";
+const MOON_SIGN_KEY = "zodiai_moon_sign";
 
 type StorageData = {
   messages: UIMessage[];
@@ -80,7 +83,26 @@ type ChatHistoryItem = {
   messages: UIMessage[];
 };
 
-/* ---------- helpers for current session storage ---------- */
+/* ---------------------- zodiac theme map ---------------------- */
+
+const ZODIAC_THEMES = {
+  Aries: { main: "#9A463E", sidebar: "#7B3832" },
+  Taurus: { main: "#A3A78B", sidebar: "#82866F" },
+  Gemini: { main: "#F2EEE5", sidebar: "#C2BEB7" },
+  Cancer: { main: "#B8CDD2", sidebar: "#93A4A8" },
+  Leo: { main: "#C1A166", sidebar: "#9A8152" },
+  Virgo: { main: "#C28F76", sidebar: "#9B725E" },
+  Libra: { main: "#D1D1D1", sidebar: "#A7A7A7" },
+  Scorpio: { main: "#3E2C35", sidebar: "#32232A" },
+  Sagittarius: { main: "#F9E27D", sidebar: "#C7B564" },
+  Capricorn: { main: "#D5E4DD", sidebar: "#AAB6B1" },
+  Aquarius: { main: "#2E5A73", sidebar: "#25485C" },
+  Pisces: { main: "#D8A7A1", sidebar: "#AD8681" },
+} as const;
+
+type ZodiacKey = keyof typeof ZODIAC_THEMES;
+
+/* ---------------------- helpers for current session ---------------------- */
 
 const loadMessagesFromStorage = (): {
   messages: UIMessage[];
@@ -128,7 +150,7 @@ const saveMessagesToStorage = (
   }
 };
 
-/* ---------- helpers for history storage ---------- */
+/* ---------------------- helpers for history ---------------------- */
 
 const saveHistoryToStorage = (items: ChatHistoryItem[]) => {
   if (typeof window === "undefined") return;
@@ -162,6 +184,8 @@ const getFirstUserLine = (messages: UIMessage[]): string => {
   return text.length > 100 ? text.slice(0, 97) + "…" : text;
 };
 
+/* ============================ main component ============================ */
+
 export default function Chat() {
   const [isClient, setIsClient] = useState(false);
   const [durations, setDurations] = useState<Record<string, number>>({});
@@ -177,10 +201,13 @@ export default function Chat() {
     EMPTY_BIRTH_DETAILS
   );
 
+  // Moon sign -> theme
+  const [moonSign, setMoonSign] = useState<ZodiacKey | null>(null);
+
   // History of previous chats (max 5)
   const [history, setHistory] = useState<ChatHistoryItem[]>([]);
 
-  // Load stored messages on first render (SSR-safe)
+  // Load stored messages on first render
   const stored =
     typeof window !== "undefined"
       ? loadMessagesFromStorage()
@@ -194,7 +221,8 @@ export default function Chat() {
 
   const isStreaming = status === "submitted" || status === "streaming";
 
-  // Initial client-only setup
+  /* ---------- initial client setup ---------- */
+
   useEffect(() => {
     setIsClient(true);
     setDurations(stored.durations);
@@ -206,9 +234,15 @@ export default function Chat() {
         const savedLang = localStorage.getItem(LANGUAGE_KEY) as
           | Language
           | null;
+        const savedMoon = localStorage.getItem(MOON_SIGN_KEY);
+
         if (savedName) setUserName(savedName);
         if (savedLang === "en" || savedLang === "hi" || savedLang === "gu") {
           setLanguage(savedLang);
+        }
+
+        if (savedMoon && savedMoon in ZODIAC_THEMES) {
+          setMoonSign(savedMoon as ZodiacKey);
         }
 
         const rawHistory = localStorage.getItem(HISTORY_KEY);
@@ -249,6 +283,37 @@ export default function Chat() {
       console.error("Failed to save language:", error);
     }
   }, [language, isClient]);
+
+  useEffect(() => {
+    if (!isClient || !moonSign) return;
+    try {
+      localStorage.setItem(MOON_SIGN_KEY, moonSign);
+    } catch (error) {
+      console.error("Failed to save moon sign:", error);
+    }
+  }, [moonSign, isClient]);
+
+  // Detect moon sign from assistant replies
+  useEffect(() => {
+    const assistantMessages = messages.filter((m) => m.role === "assistant");
+    if (!assistantMessages.length) return;
+
+    const latest = assistantMessages[assistantMessages.length - 1];
+    const text = getMessageText(latest);
+
+    const match = text.match(
+      /moon\s*sign\s*[:\-]\s*(Aries|Taurus|Gemini|Cancer|Leo|Virgo|Libra|Scorpio|Sagittarius|Capricorn|Aquarius|Pisces)/i
+    );
+
+    if (match && match[1]) {
+      const raw = match[1].toLowerCase();
+      const normalized =
+        (raw.charAt(0).toUpperCase() + raw.slice(1)) as ZodiacKey;
+      if (ZODIAC_THEMES[normalized]) {
+        setMoonSign(normalized);
+      }
+    }
+  }, [messages]);
 
   const handleDurationChange = (key: string, duration: number) => {
     setDurations((prev) => ({ ...prev, [key]: duration }));
@@ -322,7 +387,7 @@ export default function Chat() {
     const safeHour = hour || "12";
     const safeMinute = minute || "00";
 
-    const baseText = `My name is ${name}. My date of birth is ${day}-${month}-${year} at ${safeHour}:${safeMinute} (approx). I was born in ${place}. Please use Vedic astrology to interpret my chart and give me a clear initial overview, then show me a short menu of what ZodiAI can help me with (career, relationships, health, timing, etc.).`;
+    const baseText = `My name is ${name}. My date of birth is ${day}-${month}-${year} at ${safeHour}:${safeMinute} (approx). I was born in ${place}. Please use Vedic astrology to interpret my chart and give me a clear initial overview, then show me a short menu of what ZodiAI can help me with (career, relationships, health, timing, etc.). Also, on the very first line of your reply, explicitly state my Moon sign in the exact format 'Moon sign: <Sign>'.`;
 
     const fullText = `${makeLanguagePrefix()}${baseText}`;
 
@@ -352,7 +417,6 @@ export default function Chat() {
   };
 
   const clearChat = () => {
-    // Save current chat as previous
     archiveCurrentChatToHistory();
 
     const newMessages: UIMessage[] = [];
@@ -410,11 +474,27 @@ export default function Chat() {
 
   const formState = form.formState;
 
+  /* ---------- theme selection ---------- */
+
+  const defaultTheme = { main: "#34495e", sidebar: "#2c3e50" };
+  const activeTheme = moonSign ? ZODIAC_THEMES[moonSign] : defaultTheme;
+
+  /* ============================ render ============================ */
+
   return (
-    <div className="min-h-screen bg-[#34495e] text-slate-100">
+    <div
+      className="min-h-screen text-slate-100"
+      style={{ backgroundColor: activeTheme.main }}
+    >
       <main className="mx-auto flex h-screen max-w-6xl flex-col">
         {/* Top bar */}
-        <header className="flex items-center justify-between border-b border-[#22313f] bg-[#2c3e50] px-4 py-3 backdrop-blur-sm">
+        <header
+          className="flex items-center justify-between border-b px-4 py-3 backdrop-blur-sm"
+          style={{
+            backgroundColor: activeTheme.sidebar,
+            borderColor: activeTheme.sidebar,
+          }}
+        >
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -427,7 +507,7 @@ export default function Chat() {
               <span className="text-sm font-semibold tracking-tight text-slate-50">
                 ZodiAI – Your AI Panditji
               </span>
-              <span className="text-[11px] text-slate-300">
+              <span className="text-[11px] text-slate-200">
                 Gentle Vedic insights — not deterministic predictions.
               </span>
             </div>
@@ -484,7 +564,10 @@ export default function Chat() {
         <div className="flex flex-1 overflow-hidden">
           {/* Left sidebar – previous chats */}
           {sidebarOpen && (
-            <aside className="hidden h-full w-72 flex-shrink-0 flex-col border-r border-[#1f2d3a] bg-[#2c3e50] px-3 py-4 text-xs text-slate-100 sm:flex">
+            <aside
+              className="hidden h-full w-72 flex-shrink-0 flex-col border-r px-3 py-4 text-xs text-slate-100 sm:flex"
+              style={{ backgroundColor: activeTheme.sidebar, borderColor: activeTheme.sidebar }}
+            >
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-sm font-semibold text-slate-50">
                   Previous chats
@@ -556,7 +639,10 @@ export default function Chat() {
           )}
 
           {/* Main chat area */}
-          <section className="flex flex-1 flex-col bg-[#34495e]">
+          <section
+            className="flex flex-1 flex-col"
+            style={{ backgroundColor: activeTheme.main }}
+          >
             <div className="flex flex-1 justify-center overflow-y-auto px-4 pt-4 pb-3">
               <div className="w-full max-w-3xl space-y-4">
                 {/* Step 1 – Birth details card */}
@@ -689,7 +775,10 @@ export default function Chat() {
             </div>
 
             {/* Input area */}
-            <div className="border-t border-slate-600 bg-[#2f3f52] px-4 py-3">
+            <div
+              className="border-t px-4 py-3"
+              style={{ backgroundColor: activeTheme.sidebar, borderColor: activeTheme.sidebar }}
+            >
               <div className="mx-auto flex max-w-3xl flex-col gap-2">
                 <form
                   id="chat-form"
@@ -750,7 +839,7 @@ export default function Chat() {
                   </FieldGroup>
                 </form>
 
-                <div className="flex items-center justify-between text-[11px] text-slate-200">
+                <div className="flex items-center justify-between text-[11px] text-slate-100">
                   <button
                     type="button"
                     onClick={clearChat}
@@ -772,7 +861,7 @@ export default function Chat() {
             </div>
 
             {/* Footer */}
-            <div className="w-full bg-[#34495e] px-4 pb-3 pt-1 text-center text-[11px] text-slate-300">
+            <div className="w-full px-4 pb-3 pt-1 text-center text-[11px] text-slate-200">
               © {new Date().getFullYear()} {OWNER_NAME}
               &nbsp;·&nbsp;ZodiAI.&nbsp;Powered by&nbsp;
               <Link
