@@ -44,7 +44,7 @@ function localeFor(language: VoiceLanguage): string {
   }
 }
 
-/** 3D avatar wrapper – uses /public/pandit.png */
+/** 3D avatar wrapper – uses /public/pandit-talk.gif */
 function PanditAvatar({
   listening,
   speaking,
@@ -68,7 +68,7 @@ function PanditAvatar({
         }`}
       />
       <Image
-        src="/pandit.png"
+        src="/pandit-talk.gif"
         alt="ZodiAI Panditji"
         fill
         sizes="56px"
