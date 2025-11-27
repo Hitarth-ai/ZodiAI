@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useChat } from "@ai-sdk/react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
   Eraser,
@@ -165,6 +166,8 @@ export default function Chat() {
   const [durations, setDurations] = useState<Record<string, number>>({});
   const welcomeMessageShownRef = useRef<boolean>(false);
 
+  const [voiceMode, setVoiceMode] = useState(false);
+  
   // Profile & preferences
   const [userName, setUserName] = useState<string>("");
   const [language, setLanguage] = useState<Language>("en");
@@ -451,6 +454,21 @@ export default function Chat() {
             >
               Share chat
             </Button>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={`hidden rounded-full border px-3 py-1 text-[11px] font-medium sm:inline-flex transition ${
+                voiceMode
+                ? "border-orange-400 bg-orange-50 text-orange-700"
+                : "border-slate-200 bg-white text-slate-600 hover:bg-orange-50"
+              }`}
+              onClick={() => setVoiceMode((v) => !v)}
+            >
+              {voiceMode ? "🎙 Voice Pandit ON" : "🎙 Voice Pandit OFF"}
+            </Button>
+
 
             <Avatar className="size-9 bg-orange-50 ring-1 ring-orange-200">
               <AvatarImage src="/logo.png" />
