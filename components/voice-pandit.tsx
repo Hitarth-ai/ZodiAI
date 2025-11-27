@@ -14,6 +14,8 @@ type TalkingPanditProps = {
   language?: VoiceLanguage;
 };
 
+// ---------- helpers ----------
+
 function extractTextFromMessage(message: UIMessage): string {
   const anyMsg: any = message;
   if (typeof anyMsg.text === "string") return anyMsg.text;
@@ -30,6 +32,19 @@ function extractTextFromMessage(message: UIMessage): string {
   return "";
 }
 
+// short conversational summary for TTS
+function getSpokenSummary(fullText: string): string {
+  if (!fullText) return "";
+
+  const sentences = fullText.split(/(?<=[.!?])\s+/);
+  const short = sentences.slice(0, 3).join(" ");
+
+  const trimmed = short.length > 350 ? short.slice(0, 347) + "..." : short;
+
+  // make it feel like a spoken response
+  return `Sun beta, main short mein bataun: ${trimmed}`;
+}
+
 function localeFor(language: VoiceLanguage): string {
   switch (language) {
     case "hi":
@@ -39,12 +54,12 @@ function localeFor(language: VoiceLanguage): string {
     case "hinglish":
     case "en":
     default:
-      // Indian-accent English works well for Hinglish too
-      return "en-IN";
+      return "en-IN"; // Indian English works well for Hinglish
   }
 }
 
-/** 3D avatar wrapper – uses /public/pandit-talk.gif */
+// ---------- avatar ----------
+
 function PanditAvatar({
   listening,
   speaking,
@@ -56,7 +71,6 @@ function PanditAvatar({
 
   return (
     <div className="relative h-14 w-14">
-      {/* soft shadow/halo */}
       <div
         className={`absolute inset-0 rounded-full bg-gradient-to-br from-orange-200 to-orange-50 shadow-lg transition ${
           active ? "scale-105" : "scale-100"
@@ -70,15 +84,17 @@ function PanditAvatar({
       <Image
         src="/pandit-talk.gif"
         alt="ZodiAI Panditji"
-        fill
-        sizes="56px"
-        className={`relative rounded-full object-cover transition ${
+        width={56}
+        height={56}
+        className={`relative h-14 w-14 rounded-full object-cover transition ${
           speaking ? "animate-pulse" : ""
         }`}
       />
     </div>
   );
 }
+
+// ---------- main widget ----------
 
 export function TalkingPandit({
   messages,
@@ -95,8 +111,10 @@ export function TalkingPandit({
   const [hasIntroduced, setHasIntroduced] = useState(false);
 
   const recognitionRef = useRef<any | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-  // --- init on client ---
+  // ---------- init STT ----------
+
   useEffect(() => {
     setIsClient(true);
     if (typeof window === "undefined") return;
@@ -118,7 +136,6 @@ export function TalkingPandit({
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       if (transcript && transcript.trim()) {
-        // Simple: send exactly what user said into your existing chat
         sendMessage({ text: transcript.trim() });
       }
     };
@@ -136,6 +153,38 @@ export function TalkingPandit({
     setSpeechSupported(true);
   }, [sendMessage, language]);
 
+  // ---------- helpers to stop TTS completely ----------
+
+  const hardStopSpeaking = () => {
+    if (typeof window === "undefined") return;
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    utteranceRef.current = null;
+    setIsSpeaking(false);
+  };
+
+  // stop speech whenever widget is disabled
+  useEffect(() => {
+    if (!isClient) return;
+    if (!enabled) {
+      hardStopSpeaking();
+      try {
+        recognitionRef.current?.stop();
+      } catch {}
+      setIsListening(false);
+    }
+  }, [enabled, isClient]);
+
+  // stop speech when TTS is toggled off
+  useEffect(() => {
+    if (!isClient) return;
+    if (!ttsEnabled) {
+      hardStopSpeaking();
+    }
+  }, [ttsEnabled, isClient]);
+
+  // ---------- mic handlers ----------
+
   const startListening = () => {
     if (!speechSupported || !recognitionRef.current) {
       alert(
@@ -143,6 +192,9 @@ export function TalkingPandit({
       );
       return;
     }
+    // if pandit is speaking, stop and start listening
+    hardStopSpeaking();
+
     try {
       recognitionRef.current.start();
       setIsListening(true);
@@ -158,65 +210,81 @@ export function TalkingPandit({
     setIsListening(false);
   };
 
-  // --- intro line: "I'm your AI Pandit, tell me beta" once when enabled ---
+  // ---------- intro line (once) ----------
+
   useEffect(() => {
     if (!isClient || !enabled || hasIntroduced) return;
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
 
-    const synth = window.speechSynthesis;
     const intro =
       language === "gu"
         ? "Kem cho beta? Hu ZodiAI chu, tamaro AI pandit. Shu puchvu chho?"
         : language === "hi" || language === "hinglish"
         ? "Namaste beta, main ZodiAI hoon, tumhara AI Pandit. Bolo beta, kya puchna hai?"
-        : "Hello beta, I'm ZodiAI, your AI Pandit. Tell me, beta, what's your question?";
+        : "Hello beta, I'm ZodiAI, your AI Pandit. Tell me beta, what's your question?";
 
     const utterance = new SpeechSynthesisUtterance(intro);
     utterance.lang = localeFor(language);
-    synth.cancel();
-    synth.speak(utterance);
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+    };
+
+    hardStopSpeaking();
+    window.speechSynthesis.speak(utterance);
+    utteranceRef.current = utterance;
     setHasIntroduced(true);
   }, [enabled, isClient, language, hasIntroduced]);
 
-  // --- speak new assistant messages ---
+  // ---------- speak summary of new assistant messages ----------
+
   useEffect(() => {
     if (!isClient || !ttsEnabled || !enabled) return;
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-
     if (messages.length === 0) return;
+
     const last = messages[messages.length - 1];
     if (last.role !== "assistant") return;
     if (last.id === lastSpokenId) return;
 
-    const text = extractTextFromMessage(last);
-    if (!text.trim()) return;
+    const fullText = extractTextFromMessage(last);
+    if (!fullText.trim()) return;
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    const spokenText = getSpokenSummary(fullText);
+    if (!spokenText.trim()) return;
+
+    const utterance = new SpeechSynthesisUtterance(spokenText);
     utterance.lang = localeFor(language);
 
     utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
+    utterance.onend = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+    };
+    utterance.onerror = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null;
+    };
 
-    window.speechSynthesis.cancel();
+    hardStopSpeaking();
     window.speechSynthesis.speak(utterance);
+    utteranceRef.current = utterance;
     setLastSpokenId(last.id);
   }, [messages, isClient, ttsEnabled, enabled, lastSpokenId, language]);
 
   if (!isClient || !enabled) return null;
 
-  const subtitle = !hasIntroduced
-    ? "I’m your AI Pandit – tell me, beta."
-    : isListening
-    ? "Listening… speak now."
+  const subtitle = isListening
+    ? "Listening… bolo beta."
     : "Tap mic and ask your question.";
 
   return (
     <div className="fixed bottom-24 right-4 z-40">
       <div className="flex items-center gap-3 rounded-3xl border border-orange-100 bg-white/95 px-4 py-3 shadow-xl">
-        {/* 3D avatar */}
         <PanditAvatar listening={isListening} speaking={isSpeaking} />
 
-        {/* text */}
         <div className="mr-2 flex flex-col">
           <span className="text-sm font-semibold text-slate-900">
             Talk to Panditji
@@ -224,7 +292,6 @@ export function TalkingPandit({
           <span className="text-[11px] text-slate-500">{subtitle}</span>
         </div>
 
-        {/* controls */}
         <div className="flex items-center gap-2">
           {/* mic */}
           <button
