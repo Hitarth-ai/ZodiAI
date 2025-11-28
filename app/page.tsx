@@ -439,23 +439,38 @@ export default function Chat() {
           ? "gu-IN"
           : "en-IN";
     utter.onstart = () => setIsSpeaking(true);
-    utter.onend = () => setIsSpeaking(false);
+    utter.onend = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null; // Clear ref on end
+    };
+    utter.onerror = () => {
+      setIsSpeaking(false);
+      utteranceRef.current = null; // Clear ref on error
+    };
+
+    // Store in ref to prevent garbage collection
+    utteranceRef.current = utter;
     synth.speak(utter);
   };
 
-  // Helper to get a spoken summary (e.g., first sentence)
+  // Helper to get a spoken summary (full response, stripped markdown)
   const getSpokenSummary = (text: string): string => {
-    const sentences = text.match(/[^.!?]+[.!?]*/g);
-    if (sentences && sentences.length > 0) {
-      const firstSentence = sentences[0].trim();
-      // Limit length to avoid very long first sentences
-      if (firstSentence.length > 200) {
-        return firstSentence.substring(0, 200) + "...";
-      }
-      return firstSentence;
+    // 1. Strip markdown
+    const cleanText = text
+      .replace(/\*\*(.*?)\*\*/g, "$1") // bold
+      .replace(/\*(.*?)\*/g, "$1") // italic
+      .replace(/#{1,6}\s?/g, "") // headers
+      .replace(/`{1,3}(.*?)`{1,3}/g, "$1") // code
+      .replace(/\[(.*?)\]\(.*?\)/g, "$1") // links
+      .replace(/[-*]\s/g, "") // list bullets
+      .replace(/\n/g, " "); // newlines to spaces
+
+    // Return full cleaned text, limited to reasonable length (e.g. 2000 chars)
+    // This allows for much longer responses than before
+    if (cleanText.length > 2000) {
+      return cleanText.substring(0, 2000) + "...";
     }
-    // Fallback: return first 200 characters if no sentences found
-    return text.substring(0, 200) + (text.length > 200 ? "..." : "");
+    return cleanText;
   };
 
   useEffect(() => {
@@ -493,6 +508,7 @@ export default function Chat() {
   };
 
   const recognitionRef = useRef<any>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const startListening = () => {
     if (typeof window === "undefined") return;
